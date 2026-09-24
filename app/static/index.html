@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>微信读书下载器</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+  <div id="login-overlay" class="overlay hidden">
+    <div class="overlay-box">
+      <h2>微信读书下载器</h2>
+      <p>请用微信扫码登录</p>
+      <img id="overlay-qr" alt="二维码" class="qr-img">
+      <p id="overlay-status">正在获取二维码...</p>
+      <button id="btn-retry-qr" class="hidden">重新获取二维码</button>
+    </div>
+  </div>
+  <header>
+    <h1><img src="/static/favicon.svg" class="logo" alt="">微信读书下载器</h1>
+    <div id="status-bar">
+      <span id="login-status" class="badge">加载中...</span>
+      <span id="rate-info"></span>
+      <div id="header-user" class="user-chip hidden">
+        <img id="header-avatar" class="user-avatar" alt="">
+        <span id="header-nick"></span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab" data-tab="shelf">书架</button>
+    <button class="tab" data-tab="records">已下载</button>
+    <button class="tab" data-tab="upload">传书</button>
+    <button class="tab" data-tab="settings">设置</button>
+    <button class="tab" data-tab="logs">日志</button>
+    <button class="tab active" data-tab="me">我的</button>
+  </nav>
+
+  <!-- 书架 -->
+  <section id="tab-shelf" class="panel">
+    <div class="toolbar">
+      <button id="btn-refresh-shelf">刷新书架</button>
+      <button id="btn-select-all">全选</button>
+      <button id="btn-select-none">全不选</button>
+      <button id="btn-download-selected" class="primary">下载选中</button>
+      <input id="shelf-search" class="search-input" type="search" placeholder="搜索书名/作者">
+      <select id="shelf-sort" class="select">
+        <option value="recent">最近阅读</option>
+        <option value="update">最近更新</option>
+        <option value="publish">出版时间</option>
+        <option value="title">书名</option>
+        <option value="author">作者</option>
+        <option value="category">分类</option>
+        <option value="price">价格</option>
+        <option value="chapters">章节数</option>
+        <option value="finished">连载状态</option>
+        <option value="reading">阅读时长</option>
+        <option value="progress">阅读进度</option>
+      </select>
+      <select id="shelf-order" class="select">
+        <option value="desc">降序</option>
+        <option value="asc">升序</option>
+      </select>
+      <select id="shelf-filter" class="select">
+        <option value="all">全部</option>
+        <option value="reading">在读</option>
+        <option value="finished">已读完</option>
+        <option value="unread">未读</option>
+      </select>
+    </div>
+    <div id="shelf-list" class="list"></div>
+    <div id="shelf-pager" class="pager"></div>
+  </section>
+
+  <!-- 已下载 -->
+  <section id="tab-records" class="panel">
+    <div class="toolbar">
+      <button id="btn-refresh-records">刷新</button>
+    </div>
+    <div id="records-list" class="list"></div>
+    <div id="records-pager" class="pager"></div>
+  </section>
+
+  <!-- 传书 -->
+  <section id="tab-upload" class="panel">
+    <div id="upload-zone" class="upload-zone">
+      <input type="file" id="upload-input" multiple hidden>
+      <div class="upload-hint">
+        <p class="upload-main">拖拽文件到此处，或 <span class="upload-link">选择文件</span></p>
+        <p class="upload-sub">支持 epub / pdf / txt / mobi / azw3 / md / doc / docx</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button id="btn-refresh-outputs">刷新列表</button>
+    </div>
+    <div id="outputs-list" class="list"></div>
+    <div id="outputs-pager" class="pager"></div>
+  </section>
+
+  <!-- 设置 -->
+  <section id="tab-settings" class="panel">
+    <div class="form-group">
+      <label>每章间隔几秒</label>
+      <input type="number" id="set-interval" min="1" max="60">
+    </div>
+    <div class="form-group">
+      <label>每月最多下几本</label>
+      <input type="number" id="set-limit" min="1" max="10000">
+    </div>
+    <div class="form-group">
+      <label>自动下载新书</label>
+      <input type="checkbox" id="set-auto-sync">
+    </div>
+    <div class="form-group">
+      <label>每隔几小时检查</label>
+      <input type="number" id="set-sync-interval" min="1" max="720" step="1">
+    </div>
+    <div class="form-group">
+      <label>保存目录</label>
+      <input type="text" id="set-output" readonly>
+    </div>
+    <div class="actions">
+      <button id="btn-save-settings" class="primary">保存设置</button>
+      <button id="btn-sync-now">立即检查新书</button>
+      <button id="btn-relogin">重新扫码登录</button>
+      <button id="btn-logout" class="danger">清除登录</button>
+    </div>
+    <div id="login-qr" class="qr-box hidden">
+      <p>请用微信扫码：</p>
+      <img id="qr-img" alt="二维码">
+      <p id="qr-status">等待扫码...</p>
+    </div>
+  </section>
+
+  <!-- 日志 -->
+  <section id="tab-logs" class="panel">
+    <div class="toolbar">
+      <button id="btn-clear-logs">清空</button>
+    </div>
+    <pre id="log-box" class="log-box"></pre>
+  </section>
+
+  <!-- 我的 -->
+  <section id="tab-me" class="panel active">
+    <div id="me-loading" class="me-loading">加载中...</div>
+    <div id="me-content" class="hidden">
+      <div class="me-profile">
+        <img id="me-avatar" class="me-avatar" alt="">
+        <div class="me-info">
+          <h2 id="me-nick"></h2>
+          <p id="me-uid" class="me-uid"></p>
+          <p id="me-signature" class="me-signature"></p>
+        </div>
+      </div>
+      <div class="me-stats">
+        <div class="me-stat"><div class="me-stat-value" id="stat-books">-</div><div class="me-stat-label">书架</div></div>
+        <div class="me-stat"><div class="me-stat-value" id="stat-reading">-</div><div class="me-stat-label">在读</div></div>
+        <div class="me-stat"><div class="me-stat-value" id="stat-finished">-</div><div class="me-stat-label">读完</div></div>
+        <div class="me-stat"><div class="me-stat-value" id="stat-time">-</div><div class="me-stat-label">阅读时长</div></div>
+      </div>
+      <h3 class="me-section-title">最近在读</h3>
+      <div id="me-recent" class="me-recent"></div>
+    </div>
+  </section>
+
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal-box">
+      <p id="modal-msg"></p>
+      <div class="modal-actions">
+        <button id="modal-cancel">取消</button>
+        <button id="modal-ok" class="primary">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="global-loading" class="global-loading hidden">
+    <div class="gl-spinner"></div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+
+</html>

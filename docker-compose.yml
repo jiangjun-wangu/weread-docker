@@ -1,0 +1,22 @@
+services:
+  weread-downloader:
+    image: ghcr.io/jiangjun-wangu/weread-docker:latest
+    platform: linux/arm64
+    container_name: weread-downloader
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=8765
+      - CONFIG_DIR=/app/config
+      - OUTPUT_DIR=/app/output
+      - DOWNLOAD_INTERVAL=3
+      - MAX_PER_MONTH=100
+      - AUTO_SYNC_ENABLED=false
+      - AUTO_SYNC_INTERVAL_HOURS=6
+      - LOG_LEVEL=info
+    volumes:
+      - ./config:/app/config
+      - ./output:/app/output
+    ports:
+      - "8765:8765"
+    user: "1000:1001"
+    restart: unless-stopped

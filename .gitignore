@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+config/*
+!config/.gitkeep
+output/*
+!output/.gitkeep
+*.tar.gz
+.venv/
+venv/
+calibre/config/
+calibre/books/
+calibre/state/
