@@ -15,6 +15,28 @@ cd ~/weread-docker && git status && git log --oneline -3
 - 工作区干净 → 可以开始
 - 有未提交改动 → 先问用户是否提交
 
+### 环境自检与依赖安装（MUST，新机器/新会话首跑）
+
+    clear; cd ~/weread-docker
+    echo "=== 0.1 系统 ==="; uname -r | grep -q microsoft-standard-WSL2 && echo "WSL2" || echo "非 WSL2"; . /etc/os-release; echo "$PRETTY_NAME"; uname -m
+    echo "=== 0.2 python3.12 ==="
+    if ! command -v python3.12 >/dev/null 2>&1; then
+        echo "缺 python3.12，尝试 deadsnakes 安装"
+        sudo apt update && sudo apt install -y software-properties-common
+        sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt update
+        sudo apt install -y python3.12 python3.12-venv python3.12-dev || echo "!!! 装 3.12 失败，手动处理"
+    fi
+    python3.12 --version
+    echo "=== 0.3 venv ==="
+    [ -d .venv ] || python3.12 -m venv .venv
+    source .venv/bin/activate; python3 --version
+    echo "=== 0.4 依赖 ==="
+    pip install --upgrade pip >/dev/null && pip install -r requirements.txt
+    echo "=== 0.5 docker(可选，开发机无需) ==="
+    command -v docker >/dev/null && docker --version || echo "无 docker（开发机无需，构建在 NAS）"
+
+判定：0.2 出 Python 3.12.x；0.3 出 Python 3.12.x；0.4 无报错；0.5 记录即可。
+
 ### 修改前探测（MUST）
 
 禁止未探测直接给替换代码。先做其一：
@@ -518,7 +540,8 @@ HANDOFF.md 必含：
 代码在 ~/weread-docker，git 已关联 GitHub。
 遵守 CONVENTIONS.md 的开发规范。
 从 HANDOFF.md 的"下一步"继续。
-先跑健康检查确认环境。
+先跑环境自检与依赖安装（〇 节）。
+再跑健康检查确认环境（TESTING.md 第一节）。
 ```
 
 ### 10.4 提交交接文档（MUST）

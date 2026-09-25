@@ -57,6 +57,17 @@
 
 ## 七、更新日志
 
+### 2026-09-25（环境固化）
+
+- 新机环境：WSL2 + Ubuntu 26.04.1 LTS（x86_64），默认 Python 3.14，无 python3-venv
+- 按 CONVENTIONS 5.1 钉 Python 3.12：deadsnakes PPA 装 python3.12/python3.12-venv/python3.12-dev（3.12.14）
+- 避坑：WSL 内不装 docker-ce（get.docker.com TLS 挂）；开发机无需 Docker，构建在 NAS
+- 避坑：venv 断链致健康检查 12 模块 FAIL；多次 source 致提示符 ((.venv) ) 嵌套，deactivate+unset VIRTUAL_ENV 清理
+- 新增 CONVENTIONS 〇 节「环境自检与依赖安装」（幂等脚本，缺 3.12 自动装）
+- 新增 TESTING.md 〇 节「环境自检与依赖安装」，原一~九节顺延
+- CONVENTIONS 10.3 / HANDOFF 开场提示改为「先环境自检，再健康检查」
+- 健康检查基线：12/12 模块 OK，运行时数据 0，git 干净 201f327
+
 ### 2026-09-24（更新）
 
 - 传书卡片微信匹配：/api/match 搜 /web/search/global，取 books[0].bookInfo（封面+简介）

@@ -124,4 +124,5 @@
 代码在 ~/weread-docker，git 已关联 GitHub。
 遵守 CONVENTIONS.md 的开发规范。
 从 HANDOFF.md 的"待办"继续。
-先跑健康检查确认环境。
+先跑环境自检与依赖安装（CONVENTIONS 〇 节）。
+再跑健康检查确认环境（TESTING.md 第一节）。

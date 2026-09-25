@@ -2,6 +2,35 @@
 
 > 每轮开发完成、提交前必跑。判定不通过 → 停，修复后再提交。
 
+## 〇、环境自检与依赖安装（新会话/新机器首跑）
+
+与 CONVENTIONS.md 〇 节同脚本，幂等，可重复跑。
+
+    clear; cd ~/weread-docker
+    echo "=== 0.1 系统 ==="; uname -r | grep -q microsoft-standard-WSL2 && echo "WSL2" || echo "非 WSL2"; . /etc/os-release; echo "$PRETTY_NAME"; uname -m
+    echo "=== 0.2 python3.12 ==="
+    if ! command -v python3.12 >/dev/null 2>&1; then
+        echo "缺 python3.12，尝试 deadsnakes 安装"
+        sudo apt update && sudo apt install -y software-properties-common
+        sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt update
+        sudo apt install -y python3.12 python3.12-venv python3.12-dev || echo "!!! 装 3.12 失败，手动处理"
+    fi
+    python3.12 --version
+    echo "=== 0.3 venv ==="
+    [ -d .venv ] || python3.12 -m venv .venv
+    source .venv/bin/activate; python3 --version
+    echo "=== 0.4 依赖 ==="
+    pip install --upgrade pip >/dev/null && pip install -r requirements.txt
+    echo "=== 0.5 docker(可选，开发机无需) ==="
+    command -v docker >/dev/null && docker --version || echo "无 docker（开发机无需，构建在 NAS）"
+
+| 项 | 判定 |
+|---|---|
+| 0.2 python3.12 | 出 Python 3.12.x |
+| 0.3 venv | 出 Python 3.12.x |
+| 0.4 依赖 | 无报错 |
+| 0.5 docker | 记录即可（开发机无需） |
+
 ## 一、健康检查（一键）
 
 ```bash
