@@ -397,6 +397,10 @@ async function loadSettings() {
     $("#set-sync-max").value = (s.auto_sync_max_per_run == null) ? 10 : s.auto_sync_max_per_run;
     $("#set-auto-restore").checked = !!s.auto_restore_enabled;
     $("#set-output").value = s.output_dir || "";
+    $("#set-opds-enabled").checked = !!s.opds_enabled;
+    $("#set-opds-user").value = s.opds_user || "";
+    $("#set-opds-pass").value = s.opds_pass || "";
+    $("#set-opds-url").value = location.origin + "/opds";
     $("#set-log-size").value = s.log_buffer_size || 500;
     $("#set-log-max-mb").value = s.log_file_max_mb || 10;
     $("#set-log-backups").value = s.log_file_backups || 3;
@@ -419,6 +423,9 @@ async function saveSettings() {
         log_buffer_size: Number($("#set-log-size").value) || 500,
         log_file_max_mb: Number($("#set-log-max-mb").value) || 10,
         log_file_backups: Number($("#set-log-backups").value) || 3,
+        opds_enabled: $("#set-opds-enabled").checked,
+        opds_user: $("#set-opds-user").value.trim(),
+        opds_pass: $("#set-opds-pass").value,
       }),
     });
     toast("已保存");
@@ -512,6 +519,22 @@ $("#btn-download-selected").addEventListener("click", async () => {
   }
 });
 $("#btn-refresh-records").addEventListener("click", loadRecords);
+(function initCopyOpds() {
+  const btn = document.getElementById("btn-copy-opds");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const url = document.getElementById("set-opds-url").value;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("已复制：" + url);
+    } catch (e) {
+      const inp = document.getElementById("set-opds-url");
+      inp.select();
+      document.execCommand("copy");
+      toast("已复制");
+    }
+  });
+})();
 $("#btn-save-settings").addEventListener("click", saveSettings);
 $("#btn-sync-now").addEventListener("click", async () => {
   const reasonMap = {

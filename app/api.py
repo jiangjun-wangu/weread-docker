@@ -8,7 +8,8 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Response
+from fastapi.responses import PlainTextResponse
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -18,6 +19,7 @@ from app import config
 from app import store
 from app import sorter
 from app import auto_sync
+from app import opds
 from app import logger as log_mod
 from app.downloader import Downloader
 
@@ -963,6 +965,76 @@ async def api_config_put(req: Request):
 @app.get("/api/logs")
 async def api_logs(n: int = 200):
     return {"lines": log_mod.recent(n)}
+
+
+# ---------- OPDS ----------
+def _check_opds_auth(request: Request):
+    s = config.load_settings()
+    if not s.get("opds_enabled"):
+        return None
+    user = (s.get("opds_user") or "").strip()
+    pwd = (s.get("opds_pass") or "").strip()
+    if not user:
+        return True
+    auth = request.headers.get("authorization", "")
+    if not auth.startswith("Basic "):
+        return False
+    try:
+        import base64 as _b64
+        raw = _b64.b64decode(auth[6:]).decode("utf-8")
+        u, _, w = raw.partition(":")
+        return u == user and w == pwd
+    except Exception:
+        return False
+
+
+def _opds_guard(request: Request):
+    r = _check_opds_auth(request)
+    if r is None:
+        raise HTTPException(status_code=404, detail="OPDS 未启用")
+    if not r:
+        raise HTTPException(
+            status_code=401, detail="需要认证",
+            headers={"WWW-Authenticate": 'Basic realm="OPDS"'},
+        )
+
+
+def _base_url(request: Request) -> str:
+    return str(request.base_url).rstrip("/")
+
+
+def _opds_response(xml, media_type):
+    return Response(
+        content=xml.encode("utf-8"),
+        media_type=media_type + "; charset=utf-8",
+    )
+
+
+@app.get("/opds")
+async def opds_root(request: Request):
+    _opds_guard(request)
+    return _opds_response(opds.root_feed(_base_url(request)), opds.NAV_TYPE)
+
+
+@app.get("/opds/all")
+async def opds_all(request: Request):
+    _opds_guard(request)
+    return _opds_response(opds.all_feed(_base_url(request)), opds.OPDS_TYPE)
+
+
+@app.get("/opds/search")
+async def opds_search(request: Request, q: str = ""):
+    _opds_guard(request)
+    return _opds_response(opds.search_feed(_base_url(request), q), opds.OPDS_TYPE)
+
+
+@app.get("/opds/download/{name}")
+async def opds_download(request: Request, name: str):
+    _opds_guard(request)
+    fp = opds.find_download(name)
+    if not fp:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return FileResponse(str(fp), media_type="application/epub+zip", filename=fp.name)
 
 
 @app.get("/api/logs/stream")

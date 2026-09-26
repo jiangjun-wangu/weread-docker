@@ -30,6 +30,9 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "info")
 LOG_BUFFER_SIZE = int(os.environ.get("LOG_BUFFER_SIZE", "500"))
 LOG_FILE_MAX_MB = int(os.environ.get("LOG_FILE_MAX_MB", "10"))
 LOG_FILE_BACKUPS = int(os.environ.get("LOG_FILE_BACKUPS", "3"))
+OPDS_ENABLED = os.environ.get("OPDS_ENABLED", "false").lower() == "true"
+OPDS_USER = os.environ.get("OPDS_USER", "")
+OPDS_PASS = os.environ.get("OPDS_PASS", "")
 
 
 SETTINGS_PATH = CONFIG_DIR / "settings.json"
@@ -45,6 +48,9 @@ ENV_OVERRIDES = {
     "log_buffer_size": ("LOG_BUFFER_SIZE", int),
     "log_file_max_mb": ("LOG_FILE_MAX_MB", int),
     "log_file_backups": ("LOG_FILE_BACKUPS", int),
+    "opds_enabled": ("OPDS_ENABLED", lambda v: str(v).lower() == "true"),
+    "opds_user": ("OPDS_USER", str),
+    "opds_pass": ("OPDS_PASS", str),
 }
 
 
@@ -67,6 +73,9 @@ DEFAULT_SETTINGS = {
     "log_buffer_size": LOG_BUFFER_SIZE,
     "log_file_max_mb": LOG_FILE_MAX_MB,
     "log_file_backups": LOG_FILE_BACKUPS,
+    "opds_enabled": OPDS_ENABLED,
+    "opds_user": OPDS_USER,
+    "opds_pass": OPDS_PASS,
     "output_dir": str(OUTPUT_DIR),
 }
 

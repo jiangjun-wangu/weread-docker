@@ -148,6 +148,23 @@
       <input type="number" id="set-log-backups" min="1" max="20" step="1">
     </div>
     <div class="form-group">
+      <label>启用 OPDS（供阅读器客户端拉书）</label>
+      <input type="checkbox" id="set-opds-enabled">
+    </div>
+    <div class="form-group">
+      <label>OPDS 用户名（留空=免认证）</label>
+      <input type="text" id="set-opds-user" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>OPDS 密码</label>
+      <input type="text" id="set-opds-pass" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>OPDS 地址</label>
+      <input type="text" id="set-opds-url" readonly>
+      <button id="btn-copy-opds" type="button">复制</button>
+    </div>
+    <div class="form-group">
       <label>保存目录</label>
       <input type="text" id="set-output" readonly>
     </div>
