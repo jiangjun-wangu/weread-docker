@@ -71,6 +71,7 @@ if STATIC_DIR.exists():
 
 # ---------- 全局状态 ----------
 _state_lock = threading.Lock()
+_shelf_lock = threading.Lock()
 _auth = None
 _cli = None
 _login_session = {"uid": "", "qr": "", "confirmed": False}
@@ -117,9 +118,17 @@ def _get_shelf_cached(cli, force=False):
             books = store.load_shelf()
             if books:
                 return books
-    books = cli.shelf()
-    store.save_shelf(books)
-    return books
+    # 加锁：并发请求只让一个去拉微信，其余等锁后复用结果
+    with _shelf_lock:
+        if not force:
+            ts = store.shelf_cached_at()
+            if ts and (time.time() - ts) < SHELF_TTL:
+                books = store.load_shelf()
+                if books:
+                    return books
+        books = cli.shelf()
+        store.save_shelf(books)
+        return books
 
 
 def _clear_shelf_cache():
@@ -280,7 +289,7 @@ async def api_user():
         raise HTTPException(status_code=500, detail=str(e))
 
     try:
-        books = cli.shelf()
+        books = _get_shelf_cached(cli)
     except client_mod.SessionExpired:
         store.clear_session()
         _reset_client()
