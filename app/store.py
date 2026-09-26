@@ -76,13 +76,14 @@ def migrate_from_json() -> None:
                 db.execute("INSERT INTO rate(month, count) VALUES(?, ?)", (m, int(c)))
     except Exception:
         pass
-    # settings
+    # settings（逐条补齐：DB 缺的 key 才补，不覆盖已有）
     try:
-        if not db.query("SELECT key FROM settings") and SETTINGS_PATH.exists():
+        if SETTINGS_PATH.exists():
             data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
             for k, v in (data or {}).items():
-                db.execute("INSERT INTO settings(key, value) VALUES(?, ?)",
-                           (k, json.dumps(v, ensure_ascii=False)))
+                if not db.query_one("SELECT key FROM settings WHERE key=?", (k,)):
+                    db.execute("INSERT INTO settings(key, value) VALUES(?, ?)",
+                               (k, json.dumps(v, ensure_ascii=False)))
     except Exception:
         pass
     # downloaded
