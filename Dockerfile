@@ -10,6 +10,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY app ./app
+COPY schema.sql .
 
 RUN mkdir -p /app/config /app/output && chmod -R a+rX /app/app
 
