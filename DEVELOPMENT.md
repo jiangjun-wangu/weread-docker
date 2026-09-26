@@ -32,6 +32,23 @@ cd ~/weread-docker && git status && git log --oneline -3
 - 命令贴错终端（如 NAS 上 `cd ~/weread-docker`）→ 立即 Ctrl+C，切回正确终端
 - 贴命令前先看提示符，别凭记忆
 
+### 终端区分（MUST）
+
+项目有**两个终端**，命令极易贴错，执行前必须看清提示符：
+
+| 终端 | 提示符 | 只能做什么 |
+|---|---|---|
+| 本地 JARVIS | `jiangjun@JARVIS:~/weread-docker$` | 改代码、git add/commit/push、本地 venv |
+| NAS（生产） | `jiangjun@wxy-oes-nas:...$` | git pull、docker build、docker compose |
+
+规则：
+
+- 改代码 / git 提交 → **只在本地**
+- 部署 / 构建镜像 → **只在 NAS**
+- NAS 上所有 docker 命令**统一 sudo**（组权限不可靠）
+- 命令贴错终端（如 NAS 上 `cd ~/weread-docker`）→ 立即 Ctrl+C，切回正确终端
+- 贴命令前先看提示符，别凭记忆
+
 ### 环境自检与依赖安装（MUST，新机器/新会话首跑）
 
     clear; cd ~/weread-docker
