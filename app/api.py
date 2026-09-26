@@ -801,6 +801,10 @@ _intro_cache = {}
 async def api_book_intro(book_id: str):
     if book_id in _intro_cache:
         return _intro_cache[book_id]
+    cached = store.get_book_meta(book_id)
+    if cached and cached.get("intro"):
+        _intro_cache[book_id] = cached
+        return cached
     a, cli = _get_client()
     if not cli:
         raise HTTPException(status_code=401, detail="未登录")
@@ -822,6 +826,10 @@ async def api_book_intro(book_id: str):
         "category": d.get("category", "") or "",
     }
     _intro_cache[book_id] = result
+    try:
+        store.save_book_meta({**result, "source": "wx"})
+    except Exception:
+        log.exception("保存 book_meta 失败")
     return result
 
 
@@ -870,6 +878,19 @@ async def api_match(name: str = ""):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     _match_cache[q] = result
+    if result.get("matched") and result.get("bookId"):
+        try:
+            store.save_book_meta({
+                "bookId": result["bookId"],
+                "title": result.get("title", ""),
+                "author": result.get("author", ""),
+                "cover": result.get("cover", ""),
+                "intro": result.get("intro", ""),
+                "rating": result.get("rating", 0),
+                "source": "wx",
+            })
+        except Exception:
+            log.exception("保存 book_meta（match）失败")
     return result
 
 

@@ -127,6 +127,55 @@ def migrate_from_json() -> None:
         pass
 
 
+def save_book_meta(data: dict) -> None:
+    """保存书籍元数据（按 book_id upsert；封面存 URL，BLOB 留空）"""
+    from app import db
+    now = int(time.time())
+    db.execute(
+        "INSERT INTO book_meta(book_id, title, author, cover_url, cover_data, cover_mime, "
+        "intro, rating, category, source, created_at, updated_at) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(book_id) DO UPDATE SET title=excluded.title, author=excluded.author, "
+        "cover_url=excluded.cover_url, intro=excluded.intro, rating=excluded.rating, "
+        "category=excluded.category, updated_at=excluded.updated_at",
+        (
+            data.get("bookId") or data.get("book_id", ""),
+            data.get("title", ""),
+            data.get("author", ""),
+            data.get("cover", "") or data.get("cover_url", ""),
+            data.get("cover_data"),
+            data.get("cover_mime", ""),
+            data.get("intro", ""),
+            int(data.get("rating", 0)),
+            data.get("category", ""),
+            data.get("source", "wx"),
+            now, now,
+        ),
+    )
+
+
+def get_book_meta(book_id: str) -> dict:
+    """按 bookId 取元数据（返回前端友好字段名）"""
+    from app import db
+    try:
+        r = db.query_one("SELECT * FROM book_meta WHERE book_id=?", (book_id,))
+    except Exception:
+        return {}
+    if not r:
+        return {}
+    return {
+        "bookId": r["book_id"],
+        "title": r["title"],
+        "author": r["author"],
+        "cover": r["cover_url"],
+        "intro": r["intro"],
+        "rating": r["rating"],
+        "category": r["category"],
+        "source": r["source"],
+        "updated_at": r["updated_at"],
+    }
+
+
 def load_downloaded() -> dict:
     from app import db
     try:
