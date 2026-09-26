@@ -13,8 +13,8 @@
 
 ## 必读文件
 
-- CONVENTIONS.md  开发规范（AI 可读版）
-- NOTES.md        协议说明 + 开发日志
+- DEVELOPMENT.md  开发规范 + 测试标准 + 协议
+- DEPLOY.md       部署流程
 - HANDOFF.md      本文件
 - README.md       用户文档
 
@@ -71,11 +71,14 @@
 - [x] 刷新书架强制绕缓存（nocache）— commit 2e0932e
 - [x] 设置页文案直白化 + 立即检查新书 toast — commit 548f79b
 - [x] NAS 重新构建推送（同步 548f79b）
-- [ ] NAS 同步数据库改造（6 批，本地已到 9f4029d）
-- [ ] auto_sync 单次上限（积压 65 本会一次全下，应限次如 10 本/轮）
-- [ ] 启动自动恢复队列应可拒绝（现在重启就自动跑，用户无法选择"这次不下"）
-- [ ] 首屏并发重复拉书架（加锁防竞态）
+- [x] auto_sync 单次上限 — commit d90c784
+- [x] 启动自动恢复队列改提示条 + 开关 — commit 2fdfcb0
+- [x] 首屏并发重复拉书架（加锁） — commit 4af0731
+- [x] 队列筛选（正在下载/排队中） — commit 2fdfcb0
+- [x] 请求日志中间件 + 日志落盘（滚动） + env 覆盖 — commit 2fdfcb0
+- [ ] NAS 同步（数据库改造 + 以上功能，本地已到 2fdfcb0）
 - [ ] 删 JSON 回退代码（NAS 稳定后）
+- [ ] **OPDS 服务器（下一阶段，供客户端使用）**
 
 ## 当前状态
 
@@ -84,7 +87,11 @@
 - 全部数据进 DB，本地 JSON 已删；NAS 首次启动靠 migrate_from_json 导入
 - 内存缓存：书架缓存改走 DB（30s TTL）；intro/match 内存缓存 + DB 持久
 - 未做：删 JSON 回退代码（批 7，NAS 稳定后）
-- git 最新 commit: 9f4029d（数据库改造 6/7 批完成）
+- 日志：内存缓冲（可配行数）+ 落盘滚动（默认 10MB×3），env 可覆盖
+- 设置项全部支持环境变量覆盖（ENV_OVERRIDES，env 优先于 DB）
+- 未完成队列：重启后顶部提示条（继续/放弃），可设置"自动继续"跳过提示
+- 筛选新增「正在下载」「排队中」
+- git 最新 commit: 2fdfcb0（队列提示条/筛选/日志落盘/env 覆盖）
 - 已测试：登录、书架、下载、暂停/继续/取消、排序、筛选、分页
 - 已测试：/api/user（curl 返回 userVid/nick/avatar/stats/recent，前端 header + 我的 Tab 展示正常）
 - NOTES.md 健康检查模式已修正（epub → \.epub，消除 app/epub.py 误报）
@@ -129,9 +136,26 @@
 ## 新会话开场提示
 
 继续微信读书 Docker 下载工具开发。
-先读 ~/weread-docker/CONVENTIONS.md、NOTES.md、HANDOFF.md。
-代码在 ~/weread-docker，git 已关联 GitHub。
-遵守 CONVENTIONS.md 的开发规范。
-从 HANDOFF.md 的"待办"继续。
-先跑环境自检与依赖安装（CONVENTIONS 〇 节）。
-再跑健康检查确认环境（TESTING.md 第一节）。
+
+第 1 步：读文件
+- ~/weread-docker/HANDOFF.md（当前进度 + 待办 + 关键决策）
+- ~/weread-docker/DEVELOPMENT.md（开发规范 + 测试标准 + 微信读书协议）
+- ~/weread-docker/README.md（项目说明）
+
+第 2 步：确认环境
+- cd ~/weread-docker && git status && git log --oneline -3
+- 工作区干净 → 可开始；有改动 → 先问用户
+- 跑 DEVELOPMENT.md 〇 节环境自检 + 测试标准节健康检查
+
+第 3 步：梳理后开工
+- 从 HANDOFF.md「待办」挑下一项
+- 遵守 DEVELOPMENT.md 的开发规范（提交六步、改前探测、MUST 规则）
+- 禁止未探测就给大段替换代码
+
+用户可直接粘贴以下内容开新会话：
+
+    继续微信读书 Docker 下载工具开发。
+    先读 ~/weread-docker/HANDOFF.md、DEVELOPMENT.md、README.md。
+    代码在 ~/weread-docker，git 已关联 GitHub。
+    遵守 DEVELOPMENT.md 的规范，从 HANDOFF.md 待办继续。
+    先跑环境自检 + 健康检查确认环境。
