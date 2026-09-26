@@ -71,11 +71,20 @@
 - [x] 刷新书架强制绕缓存（nocache）— commit 2e0932e
 - [x] 设置页文案直白化 + 立即检查新书 toast — commit 548f79b
 - [x] NAS 重新构建推送（同步 548f79b）
+- [ ] NAS 同步数据库改造（6 批，本地已到 9f4029d）
+- [ ] auto_sync 单次上限（积压 65 本会一次全下，应限次如 10 本/轮）
+- [ ] 启动自动恢复队列应可拒绝（现在重启就自动跑，用户无法选择"这次不下"）
+- [ ] 首屏并发重复拉书架（加锁防竞态）
+- [ ] 删 JSON 回退代码（NAS 稳定后）
 
 ## 当前状态
 
 - 本地 uvicorn 可跑通全流程
-- git 最新 commit: 548f79b（设置文案 + 传书匹配 + 书架缓存）
+- **数据库改造完成（6/7 批）**：SQLite（config/weread.db），8 表（session/downloaded/rate/settings/progress/queue/book_meta/shelf）
+- 全部数据进 DB，本地 JSON 已删；NAS 首次启动靠 migrate_from_json 导入
+- 内存缓存：书架缓存改走 DB（30s TTL）；intro/match 内存缓存 + DB 持久
+- 未做：删 JSON 回退代码（批 7，NAS 稳定后）
+- git 最新 commit: 9f4029d（数据库改造 6/7 批完成）
 - 已测试：登录、书架、下载、暂停/继续/取消、排序、筛选、分页
 - 已测试：/api/user（curl 返回 userVid/nick/avatar/stats/recent，前端 header + 我的 Tab 展示正常）
 - NOTES.md 健康检查模式已修正（epub → \.epub，消除 app/epub.py 误报）
