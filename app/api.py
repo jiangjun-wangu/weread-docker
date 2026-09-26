@@ -26,6 +26,12 @@ log = logging.getLogger("api")
 
 @asynccontextmanager
 async def lifespan(app):
+    try:
+        from app import db
+        db.init_db()
+        store.migrate_from_json()
+    except Exception:
+        log.exception("数据库初始化/迁移失败")
     sch = auto_sync.init_scheduler(
         _auto_sync_tick, _auto_sync_interval_hours, _auto_sync_is_enabled
     )

@@ -3,7 +3,7 @@ import json
 import time
 from pathlib import Path
 
-from app.config import CONFIG_DIR, ensure_dirs
+from app.config import CONFIG_DIR, ensure_dirs, SETTINGS_PATH
 
 
 SESSION_PATH = CONFIG_DIR / "session.json"
@@ -14,28 +14,77 @@ QUEUE_PATH = PROGRESS_DIR / "_queue.json"
 
 
 def save_session(cookies: dict, uid: str = "") -> None:
-    ensure_dirs()
-    data = {
-        "cookies": cookies,
-        "uid": uid,
-        "created_at": int(time.time()),
-        "last_renewal": 0,
-    }
-    SESSION_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    from app import db
+    now = int(time.time())
+    db.execute(
+        "INSERT INTO session(id, cookies_json, uid, created_at, last_renewal) "
+        "VALUES(1, ?, ?, ?, 0) "
+        "ON CONFLICT(id) DO UPDATE SET cookies_json=excluded.cookies_json, "
+        "uid=excluded.uid, created_at=excluded.created_at",
+        (json.dumps(cookies, ensure_ascii=False), uid, now),
+    )
 
 
 def load_session() -> dict:
-    if not SESSION_PATH.exists():
-        return {}
+    from app import db
     try:
-        return json.loads(SESSION_PATH.read_text(encoding="utf-8"))
+        r = db.query_one("SELECT cookies_json, uid, created_at, last_renewal FROM session WHERE id=1")
+        if r:
+            return {
+                "cookies": json.loads(r["cookies_json"] or "{}"),
+                "uid": r["uid"] or "",
+                "created_at": r["created_at"] or 0,
+                "last_renewal": r["last_renewal"] or 0,
+            }
     except Exception:
-        return {}
+        pass
+    # 回退：旧 JSON
+    if SESSION_PATH.exists():
+        try:
+            return json.loads(SESSION_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
 
 
 def clear_session() -> None:
+    from app import db
+    try:
+        db.execute("DELETE FROM session WHERE id=1")
+    except Exception:
+        pass
     if SESSION_PATH.exists():
         SESSION_PATH.unlink()
+
+
+def migrate_from_json() -> None:
+    """一次性把旧 JSON 数据导入 DB（幂等：DB 已有数据则跳过）"""
+    from app import db
+    # session
+    try:
+        if not db.query_one("SELECT id FROM session WHERE id=1") and SESSION_PATH.exists():
+            data = json.loads(SESSION_PATH.read_text(encoding="utf-8"))
+            if data.get("cookies"):
+                save_session(data.get("cookies", {}), data.get("uid", ""))
+    except Exception:
+        pass
+    # rate
+    try:
+        if not db.query("SELECT month FROM rate") and RATE_PATH.exists():
+            data = json.loads(RATE_PATH.read_text(encoding="utf-8"))
+            for m, c in (data or {}).items():
+                db.execute("INSERT INTO rate(month, count) VALUES(?, ?)", (m, int(c)))
+    except Exception:
+        pass
+    # settings
+    try:
+        if not db.query("SELECT key FROM settings") and SETTINGS_PATH.exists():
+            data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+            for k, v in (data or {}).items():
+                db.execute("INSERT INTO settings(key, value) VALUES(?, ?)",
+                           (k, json.dumps(v, ensure_ascii=False)))
+    except Exception:
+        pass
 
 
 def load_downloaded() -> dict:
@@ -69,29 +118,41 @@ def recount_rate_from_downloaded() -> dict:
             continue
         if time.strftime("%Y-%m", time.localtime(ts)) == month:
             count += 1
-    data = load_rate()
-    data[month] = count
-    ensure_dirs()
-    RATE_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return data
+    from app import db
+    db.execute(
+        "INSERT INTO rate(month, count) VALUES(?, ?) "
+        "ON CONFLICT(month) DO UPDATE SET count=excluded.count",
+        (month, count),
+    )
+    return load_rate()
 
 
 def load_rate() -> dict:
-    if not RATE_PATH.exists():
-        return {}
+    from app import db
     try:
-        return json.loads(RATE_PATH.read_text(encoding="utf-8"))
+        rows = db.query("SELECT month, count FROM rate")
+        if rows:
+            return {r["month"]: r["count"] for r in rows}
     except Exception:
-        return {}
+        pass
+    # 回退：旧 JSON
+    if RATE_PATH.exists():
+        try:
+            return json.loads(RATE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
 
 
 def bump_rate(count: int = 1) -> dict:
-    ensure_dirs()
-    data = load_rate()
+    from app import db
     month = time.strftime("%Y-%m")
-    data[month] = data.get(month, 0) + count
-    RATE_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return data
+    db.execute(
+        "INSERT INTO rate(month, count) VALUES(?, ?) "
+        "ON CONFLICT(month) DO UPDATE SET count = count + ?",
+        (month, count, count),
+    )
+    return load_rate()
 
 
 # ---------- 下载进度（仅记录状态，不存章节） ----------

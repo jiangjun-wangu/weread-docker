@@ -49,19 +49,41 @@ DEFAULT_SETTINGS = {
 
 
 def load_settings() -> dict:
-    if not SETTINGS_PATH.exists():
-        return dict(DEFAULT_SETTINGS)
+    from app import db
     try:
-        data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-        merged = dict(DEFAULT_SETTINGS)
-        merged.update(data)
-        # 旧字段 auto_sync → 新字段 auto_sync_enabled 迁移
-        if "auto_sync" in data and "auto_sync_enabled" not in data:
-            merged["auto_sync_enabled"] = bool(data["auto_sync"])
-        return merged
+        rows = db.query("SELECT key, value FROM settings")
+        if rows:
+            data = {}
+            for r in rows:
+                try:
+                    data[r["key"]] = json.loads(r["value"])
+                except Exception:
+                    data[r["key"]] = r["value"]
+            merged = dict(DEFAULT_SETTINGS)
+            merged.update(data)
+            if "auto_sync" in data and "auto_sync_enabled" not in data:
+                merged["auto_sync_enabled"] = bool(data["auto_sync"])
+            return merged
     except Exception:
-        return dict(DEFAULT_SETTINGS)
+        pass
+    # 回退：旧 JSON
+    if SETTINGS_PATH.exists():
+        try:
+            data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+            merged = dict(DEFAULT_SETTINGS)
+            merged.update(data)
+            if "auto_sync" in data and "auto_sync_enabled" not in data:
+                merged["auto_sync_enabled"] = bool(data["auto_sync"])
+            return merged
+        except Exception:
+            pass
+    return dict(DEFAULT_SETTINGS)
 
 
 def save_settings(data: dict) -> None:
-    SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    from app import db
+    db.executemany(
+        "INSERT INTO settings(key, value) VALUES(?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [(k, json.dumps(v, ensure_ascii=False)) for k, v in data.items()],
+    )
