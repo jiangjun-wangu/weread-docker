@@ -95,7 +95,6 @@ _download_state = {
     "has_restore": False,
 }
 
-_shelf_cache = {"data": None, "ts": 0}
 
 
 def _check_rate_limit():
@@ -111,19 +110,20 @@ def _check_rate_limit():
 SHELF_TTL = 30
 
 
-def _get_shelf_cached(cli):
-    now = time.time()
-    if _shelf_cache["data"] is not None and now - _shelf_cache["ts"] < SHELF_TTL:
-        return _shelf_cache["data"]
+def _get_shelf_cached(cli, force=False):
+    if not force:
+        ts = store.shelf_cached_at()
+        if ts and (time.time() - ts) < SHELF_TTL:
+            books = store.load_shelf()
+            if books:
+                return books
     books = cli.shelf()
-    _shelf_cache["data"] = books
-    _shelf_cache["ts"] = now
+    store.save_shelf(books)
     return books
 
 
 def _clear_shelf_cache():
-    _shelf_cache["data"] = None
-    _shelf_cache["ts"] = 0
+    store.clear_shelf()
 
 
 def _get_client():
@@ -137,11 +137,10 @@ def _get_client():
 
 
 def _clear_caches():
-    """清所有内存缓存（登录/登出/换账号时调用）"""
-    global _shelf_cache, _user_cache, _intro_cache, _match_cache
+    """清所有缓存（登录/登出/换账号时调用）"""
+    global _user_cache, _intro_cache, _match_cache
     try:
-        _shelf_cache["data"] = None
-        _shelf_cache["ts"] = 0
+        store.clear_shelf()
     except Exception:
         pass
     try:
@@ -332,9 +331,7 @@ async def api_shelf(sort: str = "recent", order: str = "desc", filter: str = "al
     if not cli:
         raise HTTPException(status_code=401, detail="未登录")
     try:
-        if nocache:
-            _clear_shelf_cache()
-        books = _get_shelf_cached(cli)
+        books = _get_shelf_cached(cli, force=bool(nocache))
     except client_mod.SessionExpired:
         store.clear_session()
         _reset_client()

@@ -127,6 +127,85 @@ def migrate_from_json() -> None:
         pass
 
 
+SHELF_COLUMNS = [
+    ("bookId", "book_id"), ("title", "title"), ("author", "author"),
+    ("cover", "cover"), ("category", "category"), ("publishTime", "publish_time"),
+    ("updateTime", "update_time"), ("readUpdateTime", "read_update_time"),
+    ("centPrice", "cent_price"), ("lastChapterIdx", "last_chapter_idx"),
+    ("finished", "finished"), ("finishReading", "finish_reading"),
+    ("readingTime", "reading_time"), ("progress", "progress"),
+    ("chapterIdx", "chapter_idx"), ("hasProgress", "has_progress"),
+]
+
+
+def save_shelf(books: list) -> None:
+    """全量覆盖书架快照"""
+    from app import db
+    now = int(time.time())
+    db.execute("DELETE FROM shelf")
+    if not books:
+        return
+    rows = []
+    for i, b in enumerate(books):
+        rows.append((
+            b.get("bookId", ""), b.get("title", ""), b.get("author", ""),
+            b.get("cover", ""), b.get("category", ""), b.get("publishTime", ""),
+            int(b.get("updateTime", 0) or 0), int(b.get("readUpdateTime", 0) or 0),
+            int(b.get("centPrice", 0) or 0), int(b.get("lastChapterIdx", 0) or 0),
+            1 if b.get("finished") else 0, 1 if b.get("finishReading") else 0,
+            int(b.get("readingTime", 0) or 0), int(b.get("progress", 0) or 0),
+            int(b.get("chapterIdx", 0) or 0), 1 if b.get("hasProgress") else 0,
+            i, now,
+        ))
+    db.executemany(
+        "INSERT INTO shelf(book_id, title, author, cover, category, publish_time, "
+        "update_time, read_update_time, cent_price, last_chapter_idx, finished, "
+        "finish_reading, reading_time, progress, chapter_idx, has_progress, position, cached_at) "
+        "VALUES(" + ",".join(["?"] * 18) + ")",
+        rows,
+    )
+
+
+def load_shelf() -> list:
+    """按 position 读书架快照"""
+    from app import db
+    try:
+        rows = db.query("SELECT * FROM shelf ORDER BY position")
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        out.append({
+            "bookId": r["book_id"], "title": r["title"], "author": r["author"],
+            "cover": r["cover"], "category": r["category"],
+            "publishTime": r["publish_time"], "updateTime": r["update_time"],
+            "readUpdateTime": r["read_update_time"], "centPrice": r["cent_price"],
+            "lastChapterIdx": r["last_chapter_idx"],
+            "finished": r["finished"], "finishReading": r["finish_reading"],
+            "readingTime": r["reading_time"], "progress": r["progress"],
+            "chapterIdx": r["chapter_idx"], "hasProgress": r["has_progress"],
+        })
+    return out
+
+
+def shelf_cached_at() -> int:
+    """书架快照时间戳（0=无缓存）"""
+    from app import db
+    try:
+        r = db.query_one("SELECT MAX(cached_at) AS ts FROM shelf")
+        return int(r["ts"] or 0) if r else 0
+    except Exception:
+        return 0
+
+
+def clear_shelf() -> None:
+    from app import db
+    try:
+        db.execute("DELETE FROM shelf")
+    except Exception:
+        pass
+
+
 def save_book_meta(data: dict) -> None:
     """保存书籍元数据（按 book_id upsert；封面存 URL，BLOB 留空）"""
     from app import db
