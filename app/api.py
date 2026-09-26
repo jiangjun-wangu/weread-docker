@@ -675,12 +675,7 @@ async def api_records(page: int = 1, page_size: int = 30):
 
 @app.delete("/api/records/{book_id}")
 async def api_records_delete(book_id: str):
-    d = store.load_downloaded()
-    if book_id in d:
-        d[book_id]["deleted"] = True
-        store.DOWNLOADED_PATH.write_text(
-            json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+    store.mark_deleted(book_id)
     _clear_shelf_cache()
     return {"ok": True}
 
@@ -699,10 +694,7 @@ async def api_records_delete_file(book_id: str):
                         f.unlink()
                     except Exception as e:
                         log.warning("删文件失败 %s: %s", f.name, e)
-    d.pop(book_id, None)
-    store.DOWNLOADED_PATH.write_text(
-        json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    store.remove_downloaded(book_id)
     _clear_shelf_cache()
     return {"ok": True}
 

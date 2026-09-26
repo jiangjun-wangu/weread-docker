@@ -85,26 +85,94 @@ def migrate_from_json() -> None:
                            (k, json.dumps(v, ensure_ascii=False)))
     except Exception:
         pass
+    # downloaded
+    try:
+        if not db.query("SELECT book_id FROM downloaded") and DOWNLOADED_PATH.exists():
+            data = json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
+            for bid, v in (data or {}).items():
+                db.execute(
+                    "INSERT INTO downloaded(book_id, title, chapters, finished_at, deleted) "
+                    "VALUES(?, ?, ?, ?, ?)",
+                    (bid, v.get("title", ""), int(v.get("chapters", 0)),
+                     int(v.get("finished_at", 0)), 1 if v.get("deleted") else 0),
+                )
+    except Exception:
+        pass
+    # queue
+    try:
+        if not db.query("SELECT book_id FROM queue") and QUEUE_PATH.exists():
+            ids = json.loads(QUEUE_PATH.read_text(encoding="utf-8")) or []
+            now = int(time.time())
+            for i, bid in enumerate(ids):
+                db.execute("INSERT INTO queue(book_id, position, added_at) VALUES(?, ?, ?)",
+                           (bid, i, now))
+    except Exception:
+        pass
+    # progress
+    try:
+        if not db.query("SELECT book_id FROM progress") and PROGRESS_DIR.exists():
+            for f in PROGRESS_DIR.glob("*.meta.json"):
+                bid = f.name[:-len(".meta.json")]
+                try:
+                    v = json.loads(f.read_text(encoding="utf-8"))
+                    db.execute(
+                        "INSERT INTO progress(book_id, title, total_ch, done_ch, updated_at) "
+                        "VALUES(?, ?, ?, ?, ?)",
+                        (bid, v.get("title", ""), int(v.get("total_ch", 0)),
+                         int(v.get("done_ch", 0)), int(v.get("updated_at", 0))),
+                    )
+                except Exception:
+                    continue
+    except Exception:
+        pass
 
 
 def load_downloaded() -> dict:
-    if not DOWNLOADED_PATH.exists():
-        return {}
+    from app import db
     try:
-        return json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
+        rows = db.query("SELECT book_id, title, chapters, finished_at, deleted FROM downloaded")
+        if rows:
+            return {
+                r["book_id"]: {
+                    "title": r["title"],
+                    "chapters": r["chapters"],
+                    "finished_at": r["finished_at"],
+                    "deleted": r["deleted"],
+                }
+                for r in rows
+            }
     except Exception:
-        return {}
+        pass
+    # 回退：旧 JSON
+    if DOWNLOADED_PATH.exists():
+        try:
+            return json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
 
 
 def mark_downloaded(book_id: str, title: str, chapters: int) -> None:
-    ensure_dirs()
-    data = load_downloaded()
-    data[book_id] = {
-        "title": title,
-        "chapters": chapters,
-        "finished_at": int(time.time()),
-    }
-    DOWNLOADED_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    from app import db
+    db.execute(
+        "INSERT INTO downloaded(book_id, title, chapters, finished_at, deleted) "
+        "VALUES(?, ?, ?, ?, 0) "
+        "ON CONFLICT(book_id) DO UPDATE SET title=excluded.title, "
+        "chapters=excluded.chapters, finished_at=excluded.finished_at, deleted=0",
+        (book_id, title, chapters, int(time.time())),
+    )
+
+
+def mark_deleted(book_id: str) -> None:
+    """软删：标记 deleted=1，保留文件"""
+    from app import db
+    db.execute("UPDATE downloaded SET deleted=1 WHERE book_id=?", (book_id,))
+
+
+def remove_downloaded(book_id: str) -> None:
+    """硬删：从 downloaded 表移除记录"""
+    from app import db
+    db.execute("DELETE FROM downloaded WHERE book_id=?", (book_id,))
 
 
 def recount_rate_from_downloaded() -> dict:
@@ -168,43 +236,84 @@ def _meta_path(book_id: str) -> Path:
 
 
 def save_queue(book_ids: list) -> None:
-    _ensure_progress_dir()
-    QUEUE_PATH.write_text(json.dumps(book_ids, ensure_ascii=False), encoding="utf-8")
+    from app import db
+    db.execute("DELETE FROM queue")
+    if book_ids:
+        now = int(time.time())
+        db.executemany(
+            "INSERT INTO queue(book_id, position, added_at) VALUES(?, ?, ?)",
+            [(bid, i, now) for i, bid in enumerate(book_ids)],
+        )
 
 
 def load_queue() -> list:
-    if not QUEUE_PATH.exists():
-        return []
+    from app import db
     try:
-        return json.loads(QUEUE_PATH.read_text(encoding="utf-8")) or []
+        rows = db.query("SELECT book_id FROM queue ORDER BY position")
+        if rows:
+            return [r["book_id"] for r in rows]
     except Exception:
-        return []
+        pass
+    # 回退：旧 JSON
+    if QUEUE_PATH.exists():
+        try:
+            return json.loads(QUEUE_PATH.read_text(encoding="utf-8")) or []
+        except Exception:
+            pass
+    return []
 
 
 def clear_queue() -> None:
+    from app import db
+    try:
+        db.execute("DELETE FROM queue")
+    except Exception:
+        pass
     if QUEUE_PATH.exists():
         QUEUE_PATH.unlink()
 
 
 def save_progress_meta(book_id: str, data: dict) -> None:
+    from app import db
     data = dict(data)
-    data["updated_at"] = int(time.time())
-    _meta_path(book_id).write_text(
-        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    db.execute(
+        "INSERT INTO progress(book_id, title, total_ch, done_ch, updated_at) "
+        "VALUES(?, ?, ?, ?, ?) "
+        "ON CONFLICT(book_id) DO UPDATE SET title=excluded.title, "
+        "total_ch=excluded.total_ch, done_ch=excluded.done_ch, updated_at=excluded.updated_at",
+        (book_id, data.get("title", ""), int(data.get("total_ch", 0)),
+         int(data.get("done_ch", 0)), int(time.time())),
     )
 
 
 def load_progress_meta(book_id: str) -> dict:
-    p = _meta_path(book_id)
-    if not p.exists():
-        return {}
+    from app import db
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        r = db.query_one(
+            "SELECT title, total_ch, done_ch, updated_at FROM progress WHERE book_id=?",
+            (book_id,),
+        )
+        if r:
+            return {"title": r["title"], "total_ch": r["total_ch"],
+                    "done_ch": r["done_ch"], "updated_at": r["updated_at"]}
     except Exception:
-        return {}
+        pass
+    # 回退：旧 JSON
+    p = _meta_path(book_id)
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
 
 
 def clear_progress(book_id: str) -> None:
+    from app import db
+    try:
+        db.execute("DELETE FROM progress WHERE book_id=?", (book_id,))
+    except Exception:
+        pass
     p = _meta_path(book_id)
     try:
         if p.exists():
@@ -214,6 +323,18 @@ def clear_progress(book_id: str) -> None:
 
 
 def list_progress() -> list:
+    from app import db
+    try:
+        rows = db.query("SELECT book_id, title, total_ch, done_ch, updated_at FROM progress")
+        if rows:
+            return [
+                {"bookId": r["book_id"], "title": r["title"], "total_ch": r["total_ch"],
+                 "done_ch": r["done_ch"], "updated_at": r["updated_at"]}
+                for r in rows
+            ]
+    except Exception:
+        pass
+    # 回退：旧 JSON
     _ensure_progress_dir()
     out = []
     for p in PROGRESS_DIR.glob("*.meta.json"):
