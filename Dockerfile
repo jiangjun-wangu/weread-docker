@@ -12,7 +12,7 @@ RUN pip install -r requirements.txt
 COPY app ./app
 COPY schema.sql .
 
-RUN mkdir -p /app/config /app/output && chmod -R a+rX /app/app
+RUN mkdir -p /app/config /app/output && chmod -R a+rX /app/app && chmod 644 /app/schema.sql
 
 ENV CONFIG_DIR=/app/config \
     OUTPUT_DIR=/app/output \
