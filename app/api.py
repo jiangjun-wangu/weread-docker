@@ -32,6 +32,16 @@ async def lifespan(app):
         store.migrate_from_json()
     except Exception:
         log.exception("数据库初始化/迁移失败")
+    try:
+        _s = config.load_settings()
+        log_mod.set_max_lines(_s.get("log_buffer_size", 500))
+        log_mod.install_file_handler(
+            config.CONFIG_DIR / "logs" / "app.log",
+            _s.get("log_file_max_mb", 10),
+            _s.get("log_file_backups", 3),
+        )
+    except Exception:
+        pass
     sch = auto_sync.init_scheduler(
         _auto_sync_tick, _auto_sync_interval_hours, _auto_sync_is_enabled
     )
@@ -63,6 +73,18 @@ async def lifespan(app):
 
 
 app = FastAPI(title="weread-downloader", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def _log_requests(request, call_next):
+    t0 = time.time()
+    resp = await call_next(request)
+    path = request.url.path
+    if not path.startswith("/static") and path != "/api/logs/stream":
+        q = request.url.query
+        log.info("%s %s%s -> %d (%.0fms)", request.method, path,
+                 ("?" + q) if q else "", resp.status_code, (time.time() - t0) * 1000)
+    return resp
 
 STATIC_DIR = Path(__file__).parent / "static"
 if STATIC_DIR.exists():
@@ -359,7 +381,14 @@ async def api_shelf(sort: str = "recent", order: str = "desc", filter: str = "al
         title_key = b.get("title", "")[:20]
         b["has_file"] = any(f.startswith(title_key) for f in files)
 
-    books = sorter.filter_books(books, filter)
+    # 队列态过滤（依赖运行态 _download_state["queue"]）
+    if filter in ("downloading", "queued"):
+        _want = "downloading" if filter == "downloading" else "pending"
+        _ids = {q["bookId"] for q in _download_state.get("queue", [])
+                if q.get("status") == _want}
+        books = [b for b in books if b.get("bookId") in _ids]
+    else:
+        books = sorter.filter_books(books, filter)
     books = sorter.search_books(books, q)
     books = sorter.sort_books(books, sort, order)
 
@@ -916,6 +945,17 @@ async def api_config_put(req: Request):
     cur = config.load_settings()
     cur.update(body)
     config.save_settings(cur)
+    try:
+        if "log_buffer_size" in body:
+            log_mod.set_max_lines(cur.get("log_buffer_size", 500))
+        if "log_file_max_mb" in body or "log_file_backups" in body:
+            log_mod.install_file_handler(
+                config.CONFIG_DIR / "logs" / "app.log",
+                cur.get("log_file_max_mb", 10),
+                cur.get("log_file_backups", 3),
+            )
+    except Exception:
+        pass
     return cur
 
 

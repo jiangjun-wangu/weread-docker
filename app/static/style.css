@@ -923,3 +923,24 @@ header h1 {
   object-fit: cover;
   display: block;
 }
+
+/* ---------- 未完成队列提示条 ---------- */
+.restore-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 32px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 14px;
+  border-bottom: 1px solid #fde68a;
+}
+.restore-banner.hidden { display: none; }
+.restore-banner button {
+  padding: 5px 14px;
+  font-size: 13px;
+}
+.restore-banner #restore-text {
+  flex: 1;
+  font-weight: 500;
+}

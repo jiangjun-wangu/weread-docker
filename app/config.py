@@ -25,10 +25,27 @@ AUTO_SYNC_ENABLED = os.environ.get(
 ).lower() == "true"
 AUTO_SYNC_INTERVAL_HOURS = float(os.environ.get("AUTO_SYNC_INTERVAL_HOURS", "6"))
 AUTO_SYNC_MAX_PER_RUN = int(os.environ.get("AUTO_SYNC_MAX_PER_RUN", "10"))
+AUTO_RESTORE_ENABLED = os.environ.get("AUTO_RESTORE_ENABLED", "false").lower() == "true"
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "info")
+LOG_BUFFER_SIZE = int(os.environ.get("LOG_BUFFER_SIZE", "500"))
+LOG_FILE_MAX_MB = int(os.environ.get("LOG_FILE_MAX_MB", "10"))
+LOG_FILE_BACKUPS = int(os.environ.get("LOG_FILE_BACKUPS", "3"))
 
 
 SETTINGS_PATH = CONFIG_DIR / "settings.json"
+
+# 环境变量覆盖表：key → (env 名, 类型转换)
+ENV_OVERRIDES = {
+    "download_interval": ("DOWNLOAD_INTERVAL", float),
+    "max_per_month": ("MAX_PER_MONTH", int),
+    "auto_sync_enabled": ("AUTO_SYNC_ENABLED", lambda v: str(v).lower() == "true"),
+    "auto_sync_interval_hours": ("AUTO_SYNC_INTERVAL_HOURS", float),
+    "auto_sync_max_per_run": ("AUTO_SYNC_MAX_PER_RUN", int),
+    "auto_restore_enabled": ("AUTO_RESTORE_ENABLED", lambda v: str(v).lower() == "true"),
+    "log_buffer_size": ("LOG_BUFFER_SIZE", int),
+    "log_file_max_mb": ("LOG_FILE_MAX_MB", int),
+    "log_file_backups": ("LOG_FILE_BACKUPS", int),
+}
 
 
 def ensure_dirs():
@@ -46,8 +63,23 @@ DEFAULT_SETTINGS = {
     "auto_sync_enabled": AUTO_SYNC_ENABLED,
     "auto_sync_interval_hours": AUTO_SYNC_INTERVAL_HOURS,
     "auto_sync_max_per_run": AUTO_SYNC_MAX_PER_RUN,
+    "auto_restore_enabled": AUTO_RESTORE_ENABLED,
+    "log_buffer_size": LOG_BUFFER_SIZE,
+    "log_file_max_mb": LOG_FILE_MAX_MB,
+    "log_file_backups": LOG_FILE_BACKUPS,
     "output_dir": str(OUTPUT_DIR),
 }
+
+
+def _apply_env_overrides(data: dict) -> dict:
+    for key, (env, cast) in ENV_OVERRIDES.items():
+        val = os.environ.get(env)
+        if val is not None and val != "":
+            try:
+                data[key] = cast(val)
+            except Exception:
+                pass
+    return data
 
 
 def load_settings() -> dict:
@@ -65,7 +97,7 @@ def load_settings() -> dict:
             merged.update(data)
             if "auto_sync" in data and "auto_sync_enabled" not in data:
                 merged["auto_sync_enabled"] = bool(data["auto_sync"])
-            return merged
+            return _apply_env_overrides(merged)
     except Exception:
         pass
     # 回退：旧 JSON
@@ -76,10 +108,10 @@ def load_settings() -> dict:
             merged.update(data)
             if "auto_sync" in data and "auto_sync_enabled" not in data:
                 merged["auto_sync_enabled"] = bool(data["auto_sync"])
-            return merged
+            return _apply_env_overrides(merged)
         except Exception:
             pass
-    return dict(DEFAULT_SETTINGS)
+    return _apply_env_overrides(dict(DEFAULT_SETTINGS))
 
 
 def save_settings(data: dict) -> None:

@@ -395,7 +395,11 @@ async function loadSettings() {
     $("#set-auto-sync").checked = !!s.auto_sync_enabled;
     $("#set-sync-interval").value = s.auto_sync_interval_hours || 6;
     $("#set-sync-max").value = (s.auto_sync_max_per_run == null) ? 10 : s.auto_sync_max_per_run;
+    $("#set-auto-restore").checked = !!s.auto_restore_enabled;
     $("#set-output").value = s.output_dir || "";
+    $("#set-log-size").value = s.log_buffer_size || 500;
+    $("#set-log-max-mb").value = s.log_file_max_mb || 10;
+    $("#set-log-backups").value = s.log_file_backups || 3;
   } catch (e) {
     toast("加载设置失败：" + e.message);
   }
@@ -411,6 +415,10 @@ async function saveSettings() {
         auto_sync_enabled: $("#set-auto-sync").checked,
         auto_sync_interval_hours: Number($("#set-sync-interval").value) || 6,
         auto_sync_max_per_run: Number($("#set-sync-max").value) || 0,
+        auto_restore_enabled: $("#set-auto-restore").checked,
+        log_buffer_size: Number($("#set-log-size").value) || 500,
+        log_file_max_mb: Number($("#set-log-max-mb").value) || 10,
+        log_file_backups: Number($("#set-log-backups").value) || 3,
       }),
     });
     toast("已保存");
@@ -962,19 +970,71 @@ function appendCancelBtn(wrap, bookId) {
 
 
 // ---------- 自动恢复未完成队列 ----------
-(async function autoResume() {
-  try {
-    const s = await api("/api/status");
-    if (s.has_restore && s.download && !s.download.running) {
-      const r = await api("/api/download/resume_queue", { method: "POST" });
+// ---------- 未完成队列：提示条 + 开关分流 ----------
+(async function checkRestore() {
+  const banner = document.getElementById("restore-banner");
+  const txt = document.getElementById("restore-text");
+  const yes = document.getElementById("btn-restore-yes");
+  const no = document.getElementById("btn-restore-no");
+  if (!banner || !yes || !no) return;
+
+  let _autoDone = false;
+
+  async function refreshBanner() {
+    try {
+      const s = await api("/api/status");
+      if (!(s.has_restore && s.download && !s.download.running)) {
+        banner.classList.add("hidden");
+        return;
+      }
+      let autoRestore = false;
+      try {
+        const cfg = await api("/api/config");
+        autoRestore = !!cfg.auto_restore_enabled;
+      } catch (e) {}
+      if (autoRestore) {
+        banner.classList.add("hidden");
+        if (_autoDone) return;
+        _autoDone = true;
+        try {
+          const r = await api("/api/download/resume_queue", { method: "POST" });
+          _localCancelled.clear();
+          toast("已自动继续 " + (r.count || 0) + " 本未完成下载");
+          startDownloadSSE();
+          refreshStatus();
+        } catch (e) {}
+        return;
+      }
+      txt.textContent = "上次有 " + (s.restore_count || 0) + " 本未完成下载";
+      banner.classList.remove("hidden");
+    } catch (e) {
+      banner.classList.add("hidden");
+    }
+  }
+
+  yes.addEventListener("click", async () => {
+    try {
+      const r = await api("/api/download/resume_queue", { method: "POST", loading: true });
       _localCancelled.clear();
-      toast("自动恢复未完成下载：" + (r.count || 0) + " 本");
+      banner.classList.add("hidden");
+      toast("已继续 " + (r.count || 0) + " 本");
       startDownloadSSE();
       refreshStatus();
-    }
-  } catch (e) {
-    // 静默失败
-  }
+    } catch (e) { toast("继续失败：" + e.message); }
+  });
+
+  no.addEventListener("click", async () => {
+    if (!(await confirmBox("放弃未完成的下载队列？"))) return;
+    try {
+      await api("/api/download/cancel", { method: "POST", loading: true });
+      banner.classList.add("hidden");
+      toast("已放弃未完成队列");
+      refreshStatus();
+    } catch (e) { toast("取消失败：" + e.message); }
+  });
+
+  await refreshBanner();
+  setInterval(refreshBanner, 5000);
 })();
 
 
