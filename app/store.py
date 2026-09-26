@@ -58,6 +58,24 @@ def mark_downloaded(book_id: str, title: str, chapters: int) -> None:
     DOWNLOADED_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def recount_rate_from_downloaded() -> dict:
+    """按 downloaded.json 的 finished_at 重算本月计数（覆盖，幂等）"""
+    downloaded = load_downloaded()
+    month = time.strftime("%Y-%m")
+    count = 0
+    for v in downloaded.values():
+        ts = v.get("finished_at", 0)
+        if not ts:
+            continue
+        if time.strftime("%Y-%m", time.localtime(ts)) == month:
+            count += 1
+    data = load_rate()
+    data[month] = count
+    ensure_dirs()
+    RATE_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return data
+
+
 def load_rate() -> dict:
     if not RATE_PATH.exists():
         return {}

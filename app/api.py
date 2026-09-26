@@ -90,6 +90,18 @@ _download_state = {
 }
 
 _shelf_cache = {"data": None, "ts": 0}
+
+
+def _check_rate_limit():
+    """本月下载数达上限时抛 429"""
+    month = time.strftime("%Y-%m")
+    used = store.load_rate().get(month, 0)
+    limit = config.load_settings().get("max_per_month", 100)
+    if used >= limit:
+        raise HTTPException(
+            status_code=429,
+            detail="本月已达下载上限 %d 本，请下月再试或调高上限" % limit,
+        )
 SHELF_TTL = 30
 
 
@@ -418,6 +430,9 @@ def _download_worker(book_ids):
             try:
                 r = d.download_book(book, on_progress=on_progress)
                 _download_state["results"][r] += 1
+                if r == "ok":
+                    store.bump_rate()
+                    log.info("本月计数 +1")
                 _set_queue(_bid, status="done" if r in ("ok", "skipped") else "failed",
                            pct=100 if r in ("ok", "skipped") else None)
                 log.info("[%d/%d] %s: %s", i + 1, len(targets), title, r)
@@ -482,6 +497,12 @@ def _auto_sync_tick():
     if not new_ids:
         log.info("自动同步：没有新书")
         return {"queued": 0, "reason": "no_new"}
+    month = time.strftime("%Y-%m")
+    used = store.load_rate().get(month, 0)
+    limit = config.load_settings().get("max_per_month", 100)
+    if used >= limit:
+        log.info("自动同步：本月已达上限 %d", limit)
+        return {"queued": 0, "reason": "rate_limit"}
     with _state_lock:
         if _download_state["running"]:
             return {"queued": 0, "reason": "busy"}
@@ -513,6 +534,7 @@ async def api_download(req: Request):
     book_ids = body.get("book_ids", [])
     if not book_ids:
         raise HTTPException(status_code=400, detail="book_ids 为空")
+    _check_rate_limit()
     with _state_lock:
         if _download_state["running"]:
             raise HTTPException(status_code=409, detail="已有下载任务进行中")

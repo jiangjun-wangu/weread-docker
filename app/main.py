@@ -115,6 +115,17 @@ def cmd_sync(args):
     return 0
 
 
+def cmd_recount(args):
+    from app import store
+    before = store.load_rate()
+    after = store.recount_rate_from_downloaded()
+    month = __import__("time").strftime("%Y-%m")
+    print("补计前:", before)
+    print("补计后:", after)
+    print("本月(" + month + ")已下:", after.get(month, 0), "本")
+    return 0
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="weread-downloader")
     sub = p.add_subparsers(dest="cmd")
@@ -134,6 +145,9 @@ def build_parser():
     p_sync = sub.add_parser("sync", help="全量同步书架")
     p_sync.add_argument("--interval", type=float, default=3.0)
     p_sync.set_defaults(func=cmd_sync)
+
+    p_recount = sub.add_parser("recount", help="按已下载记录重算本月计数")
+    p_recount.set_defaults(func=cmd_recount)
 
     return p
 
