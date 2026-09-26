@@ -376,8 +376,12 @@ def _set_queue(book_id, status=None, pct=None):
             return
 
 
+_consecutive_rl = [0]
+
+
 def _download_worker(book_ids):
     global _download_state
+    _consecutive_rl[0] = 0
     try:
         a, cli = _get_client()
         if not cli:
@@ -446,8 +450,21 @@ def _download_worker(book_ids):
             except Exception as e:
                 _download_state["results"]["failed"] += 1
                 _set_queue(_bid, status="failed")
-                log.exception("下载失败 %s: %s", title, e)
+                msg = str(e)
+                if "-2010" in msg:
+                    _consecutive_rl[0] += 1
+                    log.error("触发风控 -2010（第 %d 次），暂停 60 秒", _consecutive_rl[0])
+                    time.sleep(60)
+                    if _consecutive_rl[0] >= 3:
+                        log.error("连续 3 次风控，中止本次下载")
+                        break
+                else:
+                    _consecutive_rl[0] = 0
+                    log.exception("下载失败 %s: %s", title, e)
             _download_state["done"] = i + 1
+            # 每本之间强制间隔（防连续请求触发风控）
+            if i + 1 < len(targets):
+                time.sleep(config.DOWNLOAD_INTERVAL * 2)
     finally:
         _clear_shelf_cache()
         _download_state["running"] = False
