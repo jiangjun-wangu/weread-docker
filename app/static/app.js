@@ -394,6 +394,7 @@ async function loadSettings() {
     $("#set-limit").value = s.max_per_month || 100;
     $("#set-auto-sync").checked = !!s.auto_sync_enabled;
     $("#set-sync-interval").value = s.auto_sync_interval_hours || 6;
+    $("#set-sync-max").value = (s.auto_sync_max_per_run == null) ? 10 : s.auto_sync_max_per_run;
     $("#set-output").value = s.output_dir || "";
   } catch (e) {
     toast("加载设置失败：" + e.message);
@@ -409,6 +410,7 @@ async function saveSettings() {
         max_per_month: Number($("#set-limit").value),
         auto_sync_enabled: $("#set-auto-sync").checked,
         auto_sync_interval_hours: Number($("#set-sync-interval").value) || 6,
+        auto_sync_max_per_run: Number($("#set-sync-max").value) || 0,
       }),
     });
     toast("已保存");

@@ -24,6 +24,7 @@ AUTO_SYNC_ENABLED = os.environ.get(
     "AUTO_SYNC_ENABLED", os.environ.get("AUTO_SYNC", "false")
 ).lower() == "true"
 AUTO_SYNC_INTERVAL_HOURS = float(os.environ.get("AUTO_SYNC_INTERVAL_HOURS", "6"))
+AUTO_SYNC_MAX_PER_RUN = int(os.environ.get("AUTO_SYNC_MAX_PER_RUN", "10"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "info")
 
 
@@ -44,6 +45,7 @@ DEFAULT_SETTINGS = {
     "auto_sync_cron": AUTO_SYNC_CRON,
     "auto_sync_enabled": AUTO_SYNC_ENABLED,
     "auto_sync_interval_hours": AUTO_SYNC_INTERVAL_HOURS,
+    "auto_sync_max_per_run": AUTO_SYNC_MAX_PER_RUN,
     "output_dir": str(OUTPUT_DIR),
 }
 

@@ -532,14 +532,19 @@ def _auto_sync_tick():
     if used >= limit:
         log.info("自动同步：本月已达上限 %d", limit)
         return {"queued": 0, "reason": "rate_limit"}
+    total_new = len(new_ids)
+    max_per_run = int(config.load_settings().get("auto_sync_max_per_run", 10))
+    if max_per_run > 0:
+        new_ids = new_ids[:max_per_run]
     with _state_lock:
         if _download_state["running"]:
             return {"queued": 0, "reason": "busy"}
         _download_state["running"] = True
         _download_state["log"] = []
-    log.info("自动同步：发现 %d 本新书，开始下载", len(new_ids))
+    log.info("自动同步：发现 %d 本新书，本次下载 %d 本（上限 %d）",
+             total_new, len(new_ids), max_per_run)
     threading.Thread(target=_download_worker, args=(new_ids,), daemon=True).start()
-    return {"queued": len(new_ids), "book_ids": new_ids}
+    return {"queued": len(new_ids), "total_new": total_new, "book_ids": new_ids}
 
 
 def _auto_sync_interval_hours():
