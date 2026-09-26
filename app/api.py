@@ -118,6 +118,29 @@ def _get_client():
     return _auth, _cli
 
 
+def _clear_caches():
+    """清所有内存缓存（登录/登出/换账号时调用）"""
+    global _shelf_cache, _user_cache, _intro_cache, _match_cache
+    try:
+        _shelf_cache["data"] = None
+        _shelf_cache["ts"] = 0
+    except Exception:
+        pass
+    try:
+        _user_cache["data"] = None
+        _user_cache["ts"] = 0
+    except Exception:
+        pass
+    try:
+        _intro_cache.clear()
+    except Exception:
+        pass
+    try:
+        _match_cache.clear()
+    except Exception:
+        pass
+
+
 def _reset_client():
     global _auth, _cli
     if _auth:
@@ -127,6 +150,7 @@ def _reset_client():
             pass
     _auth = None
     _cli = None
+    _clear_caches()
 
 
 # ---------- 页面 ----------
