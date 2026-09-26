@@ -184,6 +184,7 @@ function pollOverlayLogin() {
         setTimeout(() => {
           hideLoginOverlay();
           switchTab("me");
+          refreshStatus();
           loadShelf();
           loadMe(true);
         }, 800);
