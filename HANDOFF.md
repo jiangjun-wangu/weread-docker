@@ -78,7 +78,7 @@
 - [x] 请求日志中间件 + 日志落盘（滚动） + env 覆盖 — commit 2fdfcb0
 - [ ] NAS 同步（数据库改造 + 以上功能，本地已到 2fdfcb0）
 - [ ] 删 JSON 回退代码（NAS 稳定后）
-- [ ] **OPDS 服务器（下一阶段，供客户端使用）**
+- [x] OPDS 1.2 目录服务（Basic 认证 + 开关）— commit e713aa2
 
 ## 当前状态
 
@@ -91,7 +91,7 @@
 - 设置项全部支持环境变量覆盖（ENV_OVERRIDES，env 优先于 DB）
 - 未完成队列：重启后顶部提示条（继续/放弃），可设置"自动继续"跳过提示
 - 筛选新增「正在下载」「排队中」
-- git 最新 commit: 2fdfcb0（队列提示条/筛选/日志落盘/env 覆盖）
+- git 最新 commit: e713aa2（OPDS 1.2 目录服务）
 - 已测试：登录、书架、下载、暂停/继续/取消、排序、筛选、分页
 - 已测试：/api/user（curl 返回 userVid/nick/avatar/stats/recent，前端 header + 我的 Tab 展示正常）
 - NOTES.md 健康检查模式已修正（epub → \.epub，消除 app/epub.py 误报）

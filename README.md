@@ -21,6 +21,7 @@
 - 打包为标准 EPUB 3，可直接导入 Calibre-Web / KOReader
 - 增量下载，已下载自动跳过
 - 支持 ARM64，官方 python:3.12-slim 基础镜像
+- OPDS 1.2 目录服务，阅读器客户端（KOReader 等）可直接拉书
 
 ## 快速开始
 
