@@ -380,6 +380,12 @@ CMD ["python", "-m", "app.api"]
 
 违反本条的 AI 操作，用户应立即叫停。
 
+补充（NAS docker 权限）：
+
+- NAS 上所有 docker / docker compose 命令**统一用 `sudo`**
+- 原因：docker 组权限不可靠（重登后仍可能拒），不要折腾加组
+- 示例：`sudo docker build` / `sudo docker compose up -d` / `sudo docker push`
+
 
 ## 六、API 规范
 
