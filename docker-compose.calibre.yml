@@ -1,0 +1,53 @@
+services:
+  weread-downloader:
+    build: .
+    image: weread-downloader:arm64
+    platform: linux/arm64
+    container_name: weread-downloader
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=8765
+      - CONFIG_DIR=/app/config
+      - OUTPUT_DIR=/app/output
+      - DOWNLOAD_INTERVAL=3
+      - MAX_PER_MONTH=100
+      - AUTO_SYNC=false
+      - LOG_LEVEL=info
+    volumes:
+      - ./config:/app/config
+      - /vol1/1000/书籍中心/微信读书-书架:/app/output
+    ports:
+      - "8765:8765"
+    user: "1000:1001"
+    restart: unless-stopped
+
+  calibre-web:
+    image: linuxserver/calibre-web:latest
+    platform: linux/arm64
+    container_name: calibre-web
+    environment:
+      - PUID=1000
+      - PGID=1001
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./calibre/config:/config
+      - ./calibre/books:/books
+    ports:
+      - "9883:8083"
+    restart: unless-stopped
+
+  auto-import:
+    image: linuxserver/calibre:latest
+    platform: linux/arm64
+    container_name: auto-import
+    environment:
+      - PUID=1000
+      - PGID=1001
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./calibre/books:/books
+      - /vol1/1000/书籍中心/微信读书-书架:/import
+      - ./calibre/state:/state
+      - ./calibre/scripts/auto-import.sh:/auto-import.sh:ro
+    entrypoint: ["/bin/sh", "/auto-import.sh"]
+    restart: unless-stopped

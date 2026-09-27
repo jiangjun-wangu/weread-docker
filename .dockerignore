@@ -1,0 +1,13 @@
+.git
+.gitignore
+.venv
+venv
+config
+output
+__pycache__
+*.pyc
+*.tar.gz
+tests
+calibre/config
+calibre/books
+calibre/state
