@@ -14,7 +14,7 @@ from app import db
 
 OPDS_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisition"
 NAV_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation"
-ACQUISITION_REL = "http://opds-spec.org/acquisition"
+ACQUISITION_REL = "http://opds-spec.org/acquisition/open-access"
 IMAGE_REL = "http://opds-spec.org/image"
 
 

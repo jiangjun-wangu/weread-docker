@@ -1028,7 +1028,7 @@ async def opds_search(request: Request, q: str = ""):
     return _opds_response(opds.search_feed(_base_url(request), q), opds.OPDS_TYPE)
 
 
-@app.get("/opds/download/{name}")
+@app.api_route("/opds/download/{name}", methods=["GET", "HEAD"])
 async def opds_download(request: Request, name: str):
     _opds_guard(request)
     fp = opds.find_download(name)
