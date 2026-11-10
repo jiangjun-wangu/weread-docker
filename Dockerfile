@@ -6,6 +6,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# 使用国内 pip 镜像源：官方 pypi.org 在本机仅 ~45KB/s，清华源 ~44MB/s
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+    PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
