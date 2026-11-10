@@ -35,7 +35,6 @@ OPDS_USER = os.environ.get("OPDS_USER", "")
 OPDS_PASS = os.environ.get("OPDS_PASS", "")
 
 
-SETTINGS_PATH = CONFIG_DIR / "settings.json"
 
 # 环境变量覆盖表：key → (env 名, 类型转换)
 ENV_OVERRIDES = {
@@ -109,17 +108,6 @@ def load_settings() -> dict:
             return _apply_env_overrides(merged)
     except Exception:
         pass
-    # 回退：旧 JSON
-    if SETTINGS_PATH.exists():
-        try:
-            data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-            merged = dict(DEFAULT_SETTINGS)
-            merged.update(data)
-            if "auto_sync" in data and "auto_sync_enabled" not in data:
-                merged["auto_sync_enabled"] = bool(data["auto_sync"])
-            return _apply_env_overrides(merged)
-        except Exception:
-            pass
     return _apply_env_overrides(dict(DEFAULT_SETTINGS))
 
 

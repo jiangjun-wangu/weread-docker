@@ -31,7 +31,6 @@ async def lifespan(app):
     try:
         from app import db
         db.init_db()
-        store.migrate_from_json()
     except Exception:
         log.exception("数据库初始化/迁移失败")
     try:

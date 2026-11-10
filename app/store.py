@@ -3,14 +3,10 @@ import json
 import time
 from pathlib import Path
 
-from app.config import CONFIG_DIR, ensure_dirs, SETTINGS_PATH
+from app.config import CONFIG_DIR, ensure_dirs
 
 
-SESSION_PATH = CONFIG_DIR / "session.json"
-DOWNLOADED_PATH = CONFIG_DIR / "downloaded.json"
-RATE_PATH = CONFIG_DIR / "rate.json"
 PROGRESS_DIR = CONFIG_DIR / "progress"
-QUEUE_PATH = PROGRESS_DIR / "_queue.json"
 
 
 def save_session(cookies: dict, uid: str = "") -> None:
@@ -38,12 +34,6 @@ def load_session() -> dict:
             }
     except Exception:
         pass
-    # 回退：旧 JSON
-    if SESSION_PATH.exists():
-        try:
-            return json.loads(SESSION_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
     return {}
 
 
@@ -62,90 +52,8 @@ def clear_session() -> None:
         db.execute("DELETE FROM session WHERE id=1")
     except Exception:
         pass
-    if SESSION_PATH.exists():
-        SESSION_PATH.unlink()
 
 
-def migrate_from_json() -> None:
-    """一次性把旧 JSON 数据导入 DB（幂等：DB 已有数据则跳过）"""
-    from app import db
-    # session
-    try:
-        if not db.query_one("SELECT id FROM session WHERE id=1") and SESSION_PATH.exists():
-            data = json.loads(SESSION_PATH.read_text(encoding="utf-8"))
-            if data.get("cookies"):
-                save_session(data.get("cookies", {}), data.get("uid", ""))
-    except Exception:
-        pass
-    # rate
-    try:
-        if not db.query("SELECT month FROM rate") and RATE_PATH.exists():
-            data = json.loads(RATE_PATH.read_text(encoding="utf-8"))
-            for m, c in (data or {}).items():
-                db.execute("INSERT INTO rate(month, count) VALUES(?, ?)", (m, int(c)))
-    except Exception:
-        pass
-    # settings（逐条补齐：DB 缺的 key 才补，不覆盖已有）
-    try:
-        if SETTINGS_PATH.exists():
-            data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-            for k, v in (data or {}).items():
-                if not db.query_one("SELECT key FROM settings WHERE key=?", (k,)):
-                    db.execute("INSERT INTO settings(key, value) VALUES(?, ?)",
-                               (k, json.dumps(v, ensure_ascii=False)))
-    except Exception:
-        pass
-    # downloaded
-    try:
-        if not db.query("SELECT book_id FROM downloaded") and DOWNLOADED_PATH.exists():
-            data = json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
-            for bid, v in (data or {}).items():
-                db.execute(
-                    "INSERT INTO downloaded(book_id, title, chapters, finished_at, deleted) "
-                    "VALUES(?, ?, ?, ?, ?)",
-                    (bid, v.get("title", ""), int(v.get("chapters", 0)),
-                     int(v.get("finished_at", 0)), 1 if v.get("deleted") else 0),
-                )
-    except Exception:
-        pass
-    # queue
-    try:
-        if not db.query("SELECT book_id FROM queue") and QUEUE_PATH.exists():
-            ids = json.loads(QUEUE_PATH.read_text(encoding="utf-8")) or []
-            now = int(time.time())
-            for i, bid in enumerate(ids):
-                db.execute("INSERT INTO queue(book_id, position, added_at) VALUES(?, ?, ?)",
-                           (bid, i, now))
-    except Exception:
-        pass
-    # progress
-    try:
-        if not db.query("SELECT book_id FROM progress") and PROGRESS_DIR.exists():
-            for f in PROGRESS_DIR.glob("*.meta.json"):
-                bid = f.name[:-len(".meta.json")]
-                try:
-                    v = json.loads(f.read_text(encoding="utf-8"))
-                    db.execute(
-                        "INSERT INTO progress(book_id, title, total_ch, done_ch, updated_at) "
-                        "VALUES(?, ?, ?, ?, ?)",
-                        (bid, v.get("title", ""), int(v.get("total_ch", 0)),
-                         int(v.get("done_ch", 0)), int(v.get("updated_at", 0))),
-                    )
-                except Exception:
-                    continue
-    except Exception:
-        pass
-
-
-SHELF_COLUMNS = [
-    ("bookId", "book_id"), ("title", "title"), ("author", "author"),
-    ("cover", "cover"), ("category", "category"), ("publishTime", "publish_time"),
-    ("updateTime", "update_time"), ("readUpdateTime", "read_update_time"),
-    ("centPrice", "cent_price"), ("lastChapterIdx", "last_chapter_idx"),
-    ("finished", "finished"), ("finishReading", "finish_reading"),
-    ("readingTime", "reading_time"), ("progress", "progress"),
-    ("chapterIdx", "chapter_idx"), ("hasProgress", "has_progress"),
-]
 
 
 def save_shelf(books: list) -> None:
@@ -265,53 +173,19 @@ def get_book_meta(book_id: str) -> dict:
     }
 
 
-def _read_downloaded_json() -> dict:
-    """读取旧版 downloaded.json（不存在或损坏时返回空字典）。"""
-    if not DOWNLOADED_PATH.exists():
-        return {}
-    try:
-        data = json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _merge_missing_into_db(db, data: dict) -> None:
-    """把 JSON 中存在、但 DB 中缺失的记录补写进 DB（只增不删，不覆盖已有行）。
-
-    这样无论 DB 缺了哪一条，读取结果都是两者的并集，避免出现
-    “JSON 有、DB 没有” 导致该条记录既看不到也删不掉。
-    """
-    try:
-        existing = set(r["book_id"] for r in db.query("SELECT book_id FROM downloaded"))
-        for bid, v in data.items():
-            if bid in existing or not isinstance(v, dict):
-                continue
-            db.execute(
-                "INSERT INTO downloaded(book_id, title, chapters, finished_at, deleted) "
-                "VALUES(?, ?, ?, ?, ?) ON CONFLICT(book_id) DO NOTHING",
-                (bid, v.get("title", ""), int(v.get("chapters", 0) or 0),
-                 int(v.get("finished_at", 0) or 0), 1 if v.get("deleted") else 0),
-            )
-    except Exception:
-        pass
 
 
 def load_downloaded() -> dict:
     """读取全部下载记录。
 
-    DB 为主数据源，旧 downloaded.json 作为补充：DB 中缺失但 JSON 中存在的
-    记录会被幂等补写进 DB（只增不删、不覆盖 DB 已有行），使两套存储保持
-    一致，避免出现“界面看得到却删不掉”的情况。
+    数据已迁移到 SQLite，本函数是唯一读取入口，不再回退旧 JSON。
     """
     from app import db
-    rows = []
     try:
         rows = db.query("SELECT book_id, title, chapters, finished_at, deleted FROM downloaded")
     except Exception:
-        rows = []
-
-    result = {
+        return {}
+    return {
         r["book_id"]: {
             "title": r["title"],
             "chapters": r["chapters"],
@@ -321,21 +195,6 @@ def load_downloaded() -> dict:
         for r in rows
     }
 
-    data = _read_downloaded_json()
-    if data:
-        missing = {k: v for k, v in data.items() if k not in result}
-        if missing:
-            _merge_missing_into_db(db, missing)
-            for bid, v in missing.items():
-                if isinstance(v, dict):
-                    result[bid] = {
-                        "title": v.get("title", ""),
-                        "chapters": int(v.get("chapters", 0) or 0),
-                        "finished_at": int(v.get("finished_at", 0) or 0),
-                        "deleted": 1 if v.get("deleted") else 0,
-                    }
-
-    return result
 
 
 def mark_downloaded(book_id: str, title: str, chapters: int) -> None:
@@ -349,68 +208,13 @@ def mark_downloaded(book_id: str, title: str, chapters: int) -> None:
     )
 
 
-def _sync_downloaded_json(mutator) -> None:
-    """把变更同步到旧版 downloaded.json。
-
-    历史问题：downloaded 数据存在 DB 与旧 JSON 两套存储，读取时 DB 优先、
-    DB 为空则回退 JSON，但写操作（删除/标记）只落 DB。一旦 DB 被清空或
-    迁移未执行，读取会回退到陈旧的 JSON，而删除操作作用在空的 DB 上，
-    表现为“删除记录/删除文件点了没反应”。
-    这里统一在写 DB 的同时同步 JSON，消除双轨不一致。
-    """
-    try:
-        if not DOWNLOADED_PATH.exists():
-            return
-        data = json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return
-        changed = mutator(data)
-        if changed:
-            DOWNLOADED_PATH.write_text(
-                json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-    except Exception:
-        pass
-
-
-def _sync_downloaded_json(mutator) -> None:
-    """把变更同步到旧版 downloaded.json。
-
-    历史问题：downloaded 数据同时存在 DB 与旧 JSON 两套存储。读取时 DB 优先、
-    DB 为空则回退 JSON；但写操作（删除/标记）只落 DB。一旦 DB 被清空或
-    迁移未执行，读取会回退到陈旧的 JSON，而删除操作作用在空的 DB 上，
-    表现为“删除记录 / 删除文件点了没反应”。
-    这里统一在写 DB 的同时同步 JSON，消除双轨不一致。
-    """
-    try:
-        if not DOWNLOADED_PATH.exists():
-            return
-        data = json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return
-        if mutator(data):
-            DOWNLOADED_PATH.write_text(
-                json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-    except Exception:
-        pass
-
 
 def mark_deleted(book_id: str) -> None:
     """软删：标记 deleted=1，保留文件。DB 与旧 JSON 同步更新。"""
     from app import db
     db.execute("UPDATE downloaded SET deleted=1 WHERE book_id=?", (book_id,))
 
-    def _mut(d):
-        rec = d.get(book_id)
-        if not isinstance(rec, dict):
-            return False
-        if rec.get("deleted"):
-            return False
-        rec["deleted"] = 1
-        return True
 
-    _sync_downloaded_json(_mut)
 
 
 def remove_downloaded(book_id: str) -> None:
@@ -418,10 +222,7 @@ def remove_downloaded(book_id: str) -> None:
     from app import db
     db.execute("DELETE FROM downloaded WHERE book_id=?", (book_id,))
 
-    def _mut(d):
-        return d.pop(book_id, None) is not None
 
-    _sync_downloaded_json(_mut)
 
 
 def recount_rate_from_downloaded() -> dict:
@@ -452,12 +253,6 @@ def load_rate() -> dict:
             return {r["month"]: r["count"] for r in rows}
     except Exception:
         pass
-    # 回退：旧 JSON
-    if RATE_PATH.exists():
-        try:
-            return json.loads(RATE_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
     return {}
 
 
@@ -503,12 +298,6 @@ def load_queue() -> list:
             return [r["book_id"] for r in rows]
     except Exception:
         pass
-    # 回退：旧 JSON
-    if QUEUE_PATH.exists():
-        try:
-            return json.loads(QUEUE_PATH.read_text(encoding="utf-8")) or []
-        except Exception:
-            pass
     return []
 
 
@@ -518,8 +307,7 @@ def clear_queue() -> None:
         db.execute("DELETE FROM queue")
     except Exception:
         pass
-    if QUEUE_PATH.exists():
-        QUEUE_PATH.unlink()
+
 
 
 def save_progress_meta(book_id: str, data: dict) -> None:
