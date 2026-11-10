@@ -265,52 +265,77 @@ def get_book_meta(book_id: str) -> dict:
     }
 
 
+def _read_downloaded_json() -> dict:
+    """读取旧版 downloaded.json（不存在或损坏时返回空字典）。"""
+    if not DOWNLOADED_PATH.exists():
+        return {}
+    try:
+        data = json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _merge_missing_into_db(db, data: dict) -> None:
+    """把 JSON 中存在、但 DB 中缺失的记录补写进 DB（只增不删，不覆盖已有行）。
+
+    这样无论 DB 缺了哪一条，读取结果都是两者的并集，避免出现
+    “JSON 有、DB 没有” 导致该条记录既看不到也删不掉。
+    """
+    try:
+        existing = set(r["book_id"] for r in db.query("SELECT book_id FROM downloaded"))
+        for bid, v in data.items():
+            if bid in existing or not isinstance(v, dict):
+                continue
+            db.execute(
+                "INSERT INTO downloaded(book_id, title, chapters, finished_at, deleted) "
+                "VALUES(?, ?, ?, ?, ?) ON CONFLICT(book_id) DO NOTHING",
+                (bid, v.get("title", ""), int(v.get("chapters", 0) or 0),
+                 int(v.get("finished_at", 0) or 0), 1 if v.get("deleted") else 0),
+            )
+    except Exception:
+        pass
+
+
 def load_downloaded() -> dict:
     """读取全部下载记录。
 
-    DB 为唯一权威数据源。若 DB 为空但旧 JSON 仍有数据，说明迁移未完成
-    或 DB 曾被清空——此时把 JSON 数据补写回 DB（幂等），避免出现
-    “读取回退到 JSON、写操作却只落 DB”的双轨不一致。
+    DB 为主数据源，旧 downloaded.json 作为补充：DB 中缺失但 JSON 中存在的
+    记录会被幂等补写进 DB（只增不删、不覆盖 DB 已有行），使两套存储保持
+    一致，避免出现“界面看得到却删不掉”的情况。
     """
     from app import db
+    rows = []
     try:
         rows = db.query("SELECT book_id, title, chapters, finished_at, deleted FROM downloaded")
-        if rows:
-            return {
-                r["book_id"]: {
-                    "title": r["title"],
-                    "chapters": r["chapters"],
-                    "finished_at": r["finished_at"],
-                    "deleted": r["deleted"],
-                }
-                for r in rows
-            }
     except Exception:
-        pass
-    # 回退：旧 JSON —— 同时补写回 DB，保证两套存储一致
-    if DOWNLOADED_PATH.exists():
-        try:
-            data = json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-        if isinstance(data, dict) and data:
-            try:
-                db.execute("DELETE FROM downloaded")
-                for bid, v in data.items():
-                    if not isinstance(v, dict):
-                        continue
-                    db.execute(
-                        "INSERT INTO downloaded(book_id, title, chapters, finished_at, deleted) "
-                        "VALUES(?, ?, ?, ?, ?) ON CONFLICT(book_id) DO UPDATE SET "
-                        "title=excluded.title, chapters=excluded.chapters, "
-                        "finished_at=excluded.finished_at, deleted=excluded.deleted",
-                        (bid, v.get("title", ""), int(v.get("chapters", 0) or 0),
-                         int(v.get("finished_at", 0) or 0), 1 if v.get("deleted") else 0),
-                    )
-            except Exception:
-                pass
-            return data
-    return {}
+        rows = []
+
+    result = {
+        r["book_id"]: {
+            "title": r["title"],
+            "chapters": r["chapters"],
+            "finished_at": r["finished_at"],
+            "deleted": r["deleted"],
+        }
+        for r in rows
+    }
+
+    data = _read_downloaded_json()
+    if data:
+        missing = {k: v for k, v in data.items() if k not in result}
+        if missing:
+            _merge_missing_into_db(db, missing)
+            for bid, v in missing.items():
+                if isinstance(v, dict):
+                    result[bid] = {
+                        "title": v.get("title", ""),
+                        "chapters": int(v.get("chapters", 0) or 0),
+                        "finished_at": int(v.get("finished_at", 0) or 0),
+                        "deleted": 1 if v.get("deleted") else 0,
+                    }
+
+    return result
 
 
 def mark_downloaded(book_id: str, title: str, chapters: int) -> None:
