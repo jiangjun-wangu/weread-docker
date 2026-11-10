@@ -740,28 +740,49 @@ async def api_records(page: int = 1, page_size: int = 30):
 
 @app.delete("/api/records/{book_id}")
 async def api_records_delete(book_id: str):
+    """仅移除记录，保留 EPUB 文件（软删）。"""
     store.mark_deleted(book_id)
     _clear_shelf_cache()
     return {"ok": True}
 
 
+def _delete_epub_files(rec: dict) -> list:
+    """按记录标题匹配并删除对应 EPUB 文件，返回被删除的文件名列表。"""
+    deleted = []
+    if not rec or not rec.get("title"):
+        return deleted
+    out_dir = Path(config.OUTPUT_DIR)
+    if not out_dir.exists():
+        return deleted
+    title = rec["title"]
+    # 文件名由 _safe_name 生成：title + ' - ' + author + '.epub'，
+    # 用标题做前缀匹配即可定位；再退一步用"标题 - 作者"全名匹配更精确。
+    prefix = title[:20]
+    full_stem = title[:180]
+    for f in out_dir.glob("*.epub"):
+        stem = f.stem
+        if stem.startswith(full_stem) or stem.startswith(prefix):
+            try:
+                f.unlink()
+                deleted.append(f.name)
+            except Exception as e:
+                log.warning("删文件失败 %s: %s", f.name, e)
+    return deleted
+
+
 @app.delete("/api/records/{book_id}/file")
 async def api_records_delete_file(book_id: str):
+    """删除记录 + 删除 EPUB 文件（硬删）。
+
+    记录与文件必须同时清除，否则会出现「文件没了但记录还在」，
+    前端仍显示该书、再次点击删除也无从下手。
+    """
     d = store.load_downloaded()
     rec = d.get(book_id)
-    if rec and rec.get("title"):
-        out_dir = Path(config.OUTPUT_DIR)
-        prefix = rec["title"][:20]
-        if out_dir.exists():
-            for f in out_dir.glob("*.epub"):
-                if f.stem.startswith(prefix):
-                    try:
-                        f.unlink()
-                    except Exception as e:
-                        log.warning("删文件失败 %s: %s", f.name, e)
+    deleted = _delete_epub_files(rec)
     store.remove_downloaded(book_id)
     _clear_shelf_cache()
-    return {"ok": True}
+    return {"ok": True, "deleted_files": deleted}
 
 
 # ---------- 配置 ----------

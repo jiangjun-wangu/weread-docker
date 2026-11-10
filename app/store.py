@@ -266,6 +266,12 @@ def get_book_meta(book_id: str) -> dict:
 
 
 def load_downloaded() -> dict:
+    """读取全部下载记录。
+
+    DB 为唯一权威数据源。若 DB 为空但旧 JSON 仍有数据，说明迁移未完成
+    或 DB 曾被清空——此时把 JSON 数据补写回 DB（幂等），避免出现
+    “读取回退到 JSON、写操作却只落 DB”的双轨不一致。
+    """
     from app import db
     try:
         rows = db.query("SELECT book_id, title, chapters, finished_at, deleted FROM downloaded")
@@ -281,12 +287,29 @@ def load_downloaded() -> dict:
             }
     except Exception:
         pass
-    # 回退：旧 JSON
+    # 回退：旧 JSON —— 同时补写回 DB，保证两套存储一致
     if DOWNLOADED_PATH.exists():
         try:
-            return json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
+            data = json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            return {}
+        if isinstance(data, dict) and data:
+            try:
+                db.execute("DELETE FROM downloaded")
+                for bid, v in data.items():
+                    if not isinstance(v, dict):
+                        continue
+                    db.execute(
+                        "INSERT INTO downloaded(book_id, title, chapters, finished_at, deleted) "
+                        "VALUES(?, ?, ?, ?, ?) ON CONFLICT(book_id) DO UPDATE SET "
+                        "title=excluded.title, chapters=excluded.chapters, "
+                        "finished_at=excluded.finished_at, deleted=excluded.deleted",
+                        (bid, v.get("title", ""), int(v.get("chapters", 0) or 0),
+                         int(v.get("finished_at", 0) or 0), 1 if v.get("deleted") else 0),
+                    )
+            except Exception:
+                pass
+            return data
     return {}
 
 
@@ -301,16 +324,79 @@ def mark_downloaded(book_id: str, title: str, chapters: int) -> None:
     )
 
 
+def _sync_downloaded_json(mutator) -> None:
+    """把变更同步到旧版 downloaded.json。
+
+    历史问题：downloaded 数据存在 DB 与旧 JSON 两套存储，读取时 DB 优先、
+    DB 为空则回退 JSON，但写操作（删除/标记）只落 DB。一旦 DB 被清空或
+    迁移未执行，读取会回退到陈旧的 JSON，而删除操作作用在空的 DB 上，
+    表现为“删除记录/删除文件点了没反应”。
+    这里统一在写 DB 的同时同步 JSON，消除双轨不一致。
+    """
+    try:
+        if not DOWNLOADED_PATH.exists():
+            return
+        data = json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return
+        changed = mutator(data)
+        if changed:
+            DOWNLOADED_PATH.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+    except Exception:
+        pass
+
+
+def _sync_downloaded_json(mutator) -> None:
+    """把变更同步到旧版 downloaded.json。
+
+    历史问题：downloaded 数据同时存在 DB 与旧 JSON 两套存储。读取时 DB 优先、
+    DB 为空则回退 JSON；但写操作（删除/标记）只落 DB。一旦 DB 被清空或
+    迁移未执行，读取会回退到陈旧的 JSON，而删除操作作用在空的 DB 上，
+    表现为“删除记录 / 删除文件点了没反应”。
+    这里统一在写 DB 的同时同步 JSON，消除双轨不一致。
+    """
+    try:
+        if not DOWNLOADED_PATH.exists():
+            return
+        data = json.loads(DOWNLOADED_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return
+        if mutator(data):
+            DOWNLOADED_PATH.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+    except Exception:
+        pass
+
+
 def mark_deleted(book_id: str) -> None:
-    """软删：标记 deleted=1，保留文件"""
+    """软删：标记 deleted=1，保留文件。DB 与旧 JSON 同步更新。"""
     from app import db
     db.execute("UPDATE downloaded SET deleted=1 WHERE book_id=?", (book_id,))
 
+    def _mut(d):
+        rec = d.get(book_id)
+        if not isinstance(rec, dict):
+            return False
+        if rec.get("deleted"):
+            return False
+        rec["deleted"] = 1
+        return True
+
+    _sync_downloaded_json(_mut)
+
 
 def remove_downloaded(book_id: str) -> None:
-    """硬删：从 downloaded 表移除记录"""
+    """硬删：从 downloaded 表移除记录。DB 与旧 JSON 同步更新。"""
     from app import db
     db.execute("DELETE FROM downloaded WHERE book_id=?", (book_id,))
+
+    def _mut(d):
+        return d.pop(book_id, None) is not None
+
+    _sync_downloaded_json(_mut)
 
 
 def recount_rate_from_downloaded() -> dict:
