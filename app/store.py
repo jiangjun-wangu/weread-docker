@@ -47,6 +47,15 @@ def load_session() -> dict:
     return {}
 
 
+def mark_renewed() -> None:
+    """记录最近一次会话续期成功的时间戳。"""
+    from app import db
+    try:
+        db.execute("UPDATE session SET last_renewal=? WHERE id=1", (int(time.time()),))
+    except Exception:
+        pass
+
+
 def clear_session() -> None:
     from app import db
     try:

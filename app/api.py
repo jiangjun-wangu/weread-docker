@@ -191,6 +191,26 @@ def _clear_caches():
         pass
 
 
+def _handle_session_expired(a, detail="session 过期"):
+    """会话失效的统一处理：先尝试续期，续期失败才清除凭据。
+
+    历史问题：这里原本无条件执行 store.clear_session()，一次偶发的 401
+    （网络抖动、微信读书临时风控）就会把凭据永久删除，用户被迫重新扫码，
+    表现为“登录后进入页面仍提示扫码”。现改为先续期，续期成功则保留登录态。
+    """
+    if a is not None:
+        try:
+            if a.renew():
+                log.info("会话续期成功，保持登录态")
+                return False
+        except Exception:
+            log.exception("会话续期异常")
+    log.warning("会话续期失败，清除登录态：%s", detail)
+    store.clear_session()
+    _reset_client()
+    return True
+
+
 def _reset_client():
     global _auth, _cli
     if _auth:
@@ -315,9 +335,9 @@ async def api_user():
     try:
         books = _get_shelf_cached(cli)
     except client_mod.SessionExpired:
-        store.clear_session()
-        _reset_client()
-        raise HTTPException(status_code=401, detail="session 过期")
+        if _handle_session_expired(a, "api/user 书架同步"):
+            raise HTTPException(status_code=401, detail="session 过期")
+        books = _get_shelf_cached(cli)
     except Exception:
         books = []
 
@@ -366,9 +386,9 @@ async def api_shelf(sort: str = "recent", order: str = "desc", filter: str = "al
     try:
         books = _get_shelf_cached(cli, force=bool(nocache))
     except client_mod.SessionExpired:
-        store.clear_session()
-        _reset_client()
-        raise HTTPException(status_code=401, detail="session 过期")
+        if _handle_session_expired(a, "api/shelf 书架同步"):
+            raise HTTPException(status_code=401, detail="session 过期")
+        books = _get_shelf_cached(cli, force=bool(nocache))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -487,9 +507,11 @@ def _download_worker(book_ids):
                 _set_queue(_bid, status="cancelled")
                 log.info("下载被用户取消")
             except client_mod.SessionExpired:
-                log.error("session 过期，中止")
-                _reset_client()
-                break
+                if _handle_session_expired(a, "下载队列"):
+                    log.error("session 过期且续期失败，中止下载")
+                    break
+                log.warning("session 过期但续期成功，重试当前书")
+                continue
             except Exception as e:
                 _download_state["results"]["failed"] += 1
                 _set_queue(_bid, status="failed")
@@ -545,9 +567,10 @@ def _auto_sync_tick():
     try:
         books = cli.shelf()
     except client_mod.SessionExpired:
-        log.warning("自动同步：session 过期")
-        _reset_client()
-        return {"queued": 0, "reason": "session_expired"}
+        if _handle_session_expired(a, "自动同步"):
+            return {"queued": 0, "reason": "session_expired"}
+        log.info("自动同步：会话已续期，重新入队")
+        return {"queued": 1, "reason": "renewed"}
     except Exception as e:
         log.exception("自动同步：拉书架失败 %s", e)
         return {"queued": 0, "reason": "shelf_error"}

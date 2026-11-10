@@ -6,6 +6,7 @@ import time
 import httpx
 import qrcode
 
+from app import logger as log
 from app import store
 
 
@@ -72,19 +73,29 @@ class WeReadAuth:
         return False
 
     def save(self) -> None:
+        """持久化会话 cookie。
+
+        注意：不能只保留 wr_ 前缀的 cookie。微信读书登录后返回的 cookie 中，
+        会话有效性还依赖 wr_skey / wr_vid 之外的其它凭据项；过滤掉会导致
+        重新加载后的会话不完整，请求时被判 401，从而反复要求重新扫码。
+        """
         cookies = {}
         for c in self.client.cookies.jar:
-            if c.name.startswith("wr_"):
+            if c.name and c.value:
                 cookies[c.name] = c.value
+        if not cookies:
+            log.warning("保存会话时未捕获到任何 cookie")
+            return
         store.save_session(cookies, self.uid)
 
     def load(self) -> bool:
+        """从持久化存储恢复会话。恢复出的 cookie 会自动补全 domain/path。"""
         sess = store.load_session()
         cookies = sess.get("cookies", {}) or {}
         if not cookies:
             return False
         for k, v in cookies.items():
-            self.client.cookies.set(k, v, domain=".weread.qq.com")
+            self.client.cookies.set(k, v, domain=".weread.qq.com", path="/")
         self.uid = sess.get("uid", "") or ""
         return True
 
@@ -106,6 +117,10 @@ class WeReadAuth:
         if not data.get("succeed"):
             return False
         self.save()
+        try:
+            store.mark_renewed()
+        except Exception:
+            pass
         return True
 
     def close(self) -> None:
