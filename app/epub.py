@@ -1,6 +1,8 @@
 import zipfile
 from io import BytesIO
 
+from app import xhtml_fix
+
 MIMETYPE = 'application/epub+zip'
 STYLESHEET = 'p{text-indent:2em}'
 
@@ -58,5 +60,7 @@ def pack_epub(book, chapters):
         z.writestr('OEBPS/nav.xhtml', build_nav(book, chapters))
         z.writestr('OEBPS/styles.css', STYLESHEET)
         for i, ch in enumerate(chapters, 1):
-            z.writestr('OEBPS/ch%06d.xhtml' % i, ch.get('xhtml', b''))
+            # 打包前最后一道保险：确保章节是单一合法 XHTML 文档
+            content = xhtml_fix.normalize_xhtml(ch.get('xhtml', b''))
+            z.writestr('OEBPS/ch%06d.xhtml' % i, content)
     return buf.getvalue()

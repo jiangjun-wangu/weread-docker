@@ -4,6 +4,7 @@ import re
 import time
 
 from app import protocol
+from app import xhtml_fix
 
 
 READER_URL = "https://weread.qq.com/web/reader/{book}k{chapter}"
@@ -153,7 +154,7 @@ class WeReadClient:
             if s != 200:
                 raise ProtocolError("t_1 status=" + str(s))
             decoded = protocol.combine_and_decode([s0, s1])
-            return {"type": "xhtml", "data": decoded}
+            return {"type": "xhtml", "data": xhtml_fix.normalize_xhtml(decoded)}
         s, s1 = self.fetch_shard(book_id, chapter_uid, "/web/book/chapter/e_1", psvts, referer)
         if s != 200:
             raise ProtocolError("e_1 status=" + str(s))
@@ -163,7 +164,7 @@ class WeReadClient:
         decoded = protocol.combine_and_decode([shard0, s1, s3])
         if decoded[:4] == pk:
             return {"type": "epub", "data": decoded}
-        return {"type": "xhtml", "data": decoded}
+        return {"type": "xhtml", "data": xhtml_fix.normalize_xhtml(decoded)}
 
 def _text_metadata(shard0):
     i = 0
